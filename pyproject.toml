@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling>=1.17.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "higgs_dna"
+version = "0.0.0"
+description = "Tools for running the CMS Higgs to Two Photons Analysis on NanoAOD"
+readme = "README.md"
+license = {text = "BSD-3-Clause"}
+requires-python = ">=3.10"
+authors = [
+  { name = "Hgg Group", email = "higgsdna@cern.ch" },
+]
+maintainers = [
+  { name = "Hgg Group", email = "higgsdna@cern.ch" },
+]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+  "coffea[dask]>=2025.10.1",
+  "fsspec-xrootd",
+  "dask-jobqueue",
+  "xgboost",
+  "pyaml",
+  "rich",
+  "torch",
+  "requests",
+  "zuko==1.4.1",
+  "onnx",
+  "onnxruntime",
+  "pyarrow",
+]
+
+[project.urls]
+Documentation = "https://higgs_dna.readthedocs.io/"
+"Bug Tracker" = "https://gitlab.cern.ch/cms-analysis/general/HiggsDNA/issues"
+Discussions = "https://gitlab.cern.ch/cms-analysis/general/HiggsDNA/discussions"
+Changelog = "https://gitlab.cern.ch/cms-analysis/general/HiggsDNA/releases"
+
+[project.optional-dependencies]
+dev = ["pytest>=6"]
+docs = ["Sphinx>=4.0", "myst-parser>=0.13", "sphinx-book-theme>=0.1.0", "sphinx-copybutton"]
+test = ["pytest>=6"]
+
+[project.scripts]
+"run_analysis.py" = "higgs_dna.scripts.run_analysis:main"
+"merge_parquet.py" = "higgs_dna.scripts.postprocessing.merge_parquet:main"
+"merge_root.py" = "higgs_dna.scripts.postprocessing.advanced.merge_root:main"
+"convert_parquet_to_root.py" = "higgs_dna.scripts.postprocessing.convert_parquet_to_root:main"
+"prepare_output_file.py" = "higgs_dna.scripts.postprocessing.prepare_output_file:main"
+"make_correction_json.py" = "higgs_dna.scripts.make_correction_json:main"
+"pull_files.py" = "higgs_dna.scripts.pull_files:main"
+"fetch_datasets.py" = "higgs_dna.scripts.samples.fetch_datasets:main"
+"download_files.py" = "higgs_dna.scripts.samples.download_files:main"
+"get_unprocessed_files.py" = "higgs_dna.scripts.get_unprocessed_files:main"
+"btagging_eff.py" = "higgs_dna.scripts.btagging_eff:main"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "higgs_dna/**",
+    "higgs_dna/metaconditions/*.json",
+    "higgs_dna/systematics/JSONs/*",
+]
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "higgs_dna/**",
+    "higgs_dna/metaconditions/*.json",
+    "higgs_dna/systematics/JSONs/*",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+addopts = [
+  "-rfesxX",
+  "-v",
+]
+log_cli_level = "DEBUG"

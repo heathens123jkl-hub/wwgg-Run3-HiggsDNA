@@ -1,0 +1,8 @@
+[flake8]
+# To be removed after the whole systematics business: E266, E712
+extend-ignore = E203, E231, E501, E722, W503, B950, E266, E712
+select = C,E,F,W,T,B,B9,I
+exclude = higgs_dna/scripts/*
+per-file-ignores =
+    tests/*: T
+    noxfile.py: T

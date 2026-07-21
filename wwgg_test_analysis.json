@@ -1,0 +1,12 @@
+{
+  "samplejson": "test_samples.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2022_preEE_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "GluGlutoHHto2B2G": ["2022preEE"]
+  },
+  "corrections": {},
+  "systematics": {}
+}

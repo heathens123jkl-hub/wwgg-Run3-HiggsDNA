@@ -1,0 +1,132 @@
+image: "registry.cern.ch/docker.io/library/python:3.10-slim"
+
+stages:
+  - build
+  - build docker
+  - tag docker
+  - static analysis
+  - test
+  - release
+
+include:
+  - project: 'cms-analysis/general/container-image-ci-templates'
+    file:
+      - 'kaniko-image.gitlab-ci.yml'
+      - 'skopeo.gitlab-ci.yml'
+
+variables:
+    CONTEXT_DIR: ""
+    DOCKER_FILE_NAME: "Dockerfile"
+    GIT_SUBMODULE_STRATEGY: recursive
+    PUSH_IMAGE: "true"
+    ACCELERATED_IMAGE: "true"
+    BUILD_ARGS: ""
+    SCAN_IMAGE: "false"
+    RELEASE_WEEKLY: "false" # set to true from the piepeline schedules
+    RELEASE_NAME: "" # set from the pipeline schedules as $(date +"v%Y.%m.0_weekly_%V")  
+
+build:
+  stage: build
+  script:
+    - pip install --no-cache-dir -e .[dev]
+    - rm -rf /root/.cache /tmp/*
+
+build_docker:
+    stage: build docker
+    rules:
+      - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "master"'
+      - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "backports-v0.7.x"'
+    variables:
+      # To push to a specific docker tag other than latest(the default), amend the --destination parameter, e.g. --destination $CI_REGISTRY_IMAGE:$CI_BUILD_REF_NAME
+      # See https://docs.gitlab.com/ee/ci/variables/predefined_variables.html#variables-reference for available variables
+      #IMAGE_DESTINATION: ${CI_REGISTRY_IMAGE}:latest
+      BUILD_ARGS: "FROM_IMAGE=gitlab-registry.cern.ch/batch-team/dask-lxplus/lxdask-al9:latest CLUSTER=lxplus-el9"
+      IMAGE_DESTINATION: ${CI_REGISTRY_IMAGE}:lxplus-el9-${CI_COMMIT_SHORT_SHA}
+    image:
+        # The kaniko debug image is recommended because it has a shell, and a shell is required for an image to be used with GitLab CI/CD.
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: [""]
+    script:
+        # Prepare Kaniko configuration file
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+        # Build and push the image from the Dockerfile at the root of the project.
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_DESTINATION
+        # Print the full registry path of the pushed image
+        - echo "Image pushed successfully to ${IMAGE_DESTINATION}"
+
+build_docker_latest:
+  stage: tag docker
+  extends: .tag_skopeo
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "master"'
+  variables:
+    IMAGE_ORIGIN_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-${CI_COMMIT_SHORT_SHA}
+    IMAGE_DESTINATION_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-latest
+
+build_docker_tagged:
+  stage: tag docker
+  extends: .tag_skopeo
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    IMAGE_ORIGIN_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-${CI_COMMIT_SHORT_SHA}
+    IMAGE_DESTINATION_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-${CI_COMMIT_TAG}
+
+build_docker_backports:
+  stage: tag docker
+  extends: .tag_skopeo
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "backports-v0.7.x"'
+  variables:
+    IMAGE_ORIGIN_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-${CI_COMMIT_SHORT_SHA}
+    IMAGE_DESTINATION_TAG: ${CI_REGISTRY_IMAGE}:lxplus-el9-v07x
+
+static_analysis:
+  stage: static analysis
+  before_script:
+    - pip install flake8
+    - pip install mypy --quiet
+    - pip install --no-cache-dir -e .[dev]
+    - rm -rf /root/.cache /tmp/*
+  script:
+    - flake8 higgs_dna/*
+    # mypy will pick up what is specified in pyproject.toml
+    #- mypy
+
+unit_test:
+  tags: 
+    - k8s-cvmfs
+  id_tokens:
+    MY_JOB_JWT: # this is needed, it specifies the aud from which the proxy is requested. 
+        aud: "cms-cat-grid-proxy-service.app.cern.ch"
+  stage: test
+  before_script:
+    - pip install --no-cache-dir -e .[dev]
+    - rm -rf /root/.cache /tmp/*
+    - apt-get update && apt-get install -y wget curl xrootd-client
+    # --- CAT proxy ---
+    - 'proxy=$(curl --fail-with-body -H "Authorization: ${MY_JOB_JWT}" "https://cms-cat-grid-proxy-service.app.cern.ch/api" | tr -d \")'
+    - 'printf "%s" "$proxy" | base64 -d > myproxy'
+    - export X509_USER_PROXY="$PWD/myproxy"
+    - export X509_CERT_DIR=/cvmfs/grid.cern.ch/etc/grid-security/certificates/
+  script:
+    - pwd
+    - ls -l
+    - export PYTHONPATH="$PYTHONPATH:."
+    - python -c "import sys;print(sys.path)"
+    - pull_files.py --target Flows --use-xrdcp
+    - pytest
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  allow_failure: false
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $RELEASE_WEEKLY == "true"' 
+  script:
+    - echo "Release Job"
+  release:
+    tag_name: $RELEASE_NAME
+    description: 'Release at $CI_COMMIT_SHA'
+    ref: '$CI_COMMIT_SHA'
+

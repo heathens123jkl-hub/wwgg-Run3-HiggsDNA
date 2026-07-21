@@ -1,0 +1,12 @@
+{
+  "samplejson": "wwgg_samples.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "GluGlutoHHto2G2Wto2QLNu_kl-1p00_kt-1p00_c2-0p00": ["2023postBPix"]
+  },
+  "corrections": {},
+  "systematics": {}
+}
