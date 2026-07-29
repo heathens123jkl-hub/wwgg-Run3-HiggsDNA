@@ -1,0 +1,10 @@
+{
+  "samplejson": "wwgg_2024_fl_test_samples.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {"WWgg_FL_test": ["2024"]},
+  "corrections": {},
+  "systematics": {}
+}
