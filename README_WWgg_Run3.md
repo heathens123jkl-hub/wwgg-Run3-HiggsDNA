@@ -32,7 +32,9 @@ If you don't have a grid certificate, use EOS local paths instead of `root://` U
 
 ## 3. Run the Test
 
-A pre-configured single-file FL signal test is included:
+A pre-configured single-file FL signal test is included.
+
+### Local (iterative)
 
 ```bash
 python3 higgs_dna/scripts/run_analysis.py \
@@ -43,7 +45,20 @@ python3 higgs_dna/scripts/run_analysis.py \
     --dump ./test_output
 ```
 
-For production jobs, replace `iterative` with `vanilla_lxplus --queue workday`.
+### On HTCondor
+
+```bash
+python3 higgs_dna/scripts/run_analysis.py \
+    --json-analysis wwgg_2024_fl_test.json \
+    --nano-version 15 \
+    --executor vanilla_lxplus \
+    --queue workday \
+    --timeout 300 \
+    --dump ./test_condor_output
+
+# Monitor jobs
+condor_q $USER
+```
 
 ## 4. Check Output
 
