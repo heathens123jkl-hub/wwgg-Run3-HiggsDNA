@@ -1,71 +1,41 @@
-# Run3 HH→WWγγ Preselection — Setup & Run Guide
+# Run3 HH→WWγ Preselection — Setup & Run Guide
 
-This guide gets you from zero to a running test job in ~10 minutes.
+Follow these steps. You should have a working test job in ~10 minutes.
 
 ---
 
-## 1. Clone the Repository
+## 1. Clone & Environment
 
 ```bash
-cd /eos/home-x/$USER/WWyy
-git clone https://github.com/heathens123jkl-hub/wwgg-Run3-HiggsDNA.git HiggsDNA_WWgg
-cd HiggsDNA_WWgg
+mkdir -p /eos/home-x/$USER/WWyy && cd /eos/home-x/$USER/WWyy
+git clone https://github.com/heathens123jkl-hub/wwgg-Run3-HiggsDNA.git test_WWgg
+cd test_WWgg
+
+# Create conda environment
+conda create -n wwgg-run3 python=3.12 -y
+conda activate wwgg-run3
+
+# Install dependencies (use python3 since conda may not provide "python")
+pip install coffea awkward uproot vector correctionlib scipy==1.14.0 pyarrow matplotlib rich dask distributed pyyaml jinja2 bokeh
+
+# Install HiggsDNA itself
+pip install -e .
 ```
 
-## 2. Environment
-
-```bash
-conda activate /eos/home-x/xiongw/WWyy/conda_envs/higgs-dna-run3
-```
-
-If this fails (e.g. `Could not find conda environment`), you need the conda environment. Ask Weitao or build one:
-
-```bash
-conda create -n higgs-dna-run3 python=3.12 -y
-conda activate higgs-dna-run3
-pip install coffea==2025.4.0 awkward uproot vector correctionlib scipy==1.14.0 pyarrow matplotlib rich
-```
-
-## 3. Grid Proxy (XRootD access)
+## 2. Grid Proxy (for XRootD)
 
 ```bash
 voms-proxy-init --voms cms -valid 192:00
 ```
 
-## 4. Sample JSON
+If you don't have a grid certificate, use EOS local paths instead of `root://` URLs (lxplus has `/eos/cms/` mounted directly).
 
-A single-file test JSON is already prepared — `wwgg_2024_fl_test_samples.json` (one file from the 2024 FL signal, verified working).
+## 3. Run the Test
 
-The analysis JSON below already points to it. No further setup needed.
-
-If you want to use other samples later, pre-fetched sample JSONs are in the repo:
-
-| File | Content | Keys |
-|------|---------|------|
-| `samples_2024_signal.json` | HH→WWγγ SM signal | `WWgg_FH_2024`, `WWgg_SL_2024`, `WWgg_FL_2024` |
-| `samples_2024_background.json` | GGJets, TTGG, single-H→γγ | `GGJets_MGG-40to80_2024`, `GGJets_MGG-80_2024`, `TTGG_2024`, `GluGluHtoGG_2024`, `VBFHtoGG_2024`, `ttHtoGG_2024` |
-
-## 5. Analysis JSON
-
-Already in the repo — `wwgg_2024_fl_test.json`:
-
-```json
-{
-  "samplejson": "wwgg_2024_fl_test_samples.json",
-  "workflow": "WWgg",
-  "metaconditions": "Era2023_postBPix_v1",
-  "taggers": [],
-  "split_mc": false,
-  "year": {"WWgg_FL_test": ["2024"]},
-  "corrections": {},
-  "systematics": {}
-}
-```
-
-## 6. Run (Local)
+A pre-configured single-file FL signal test is included:
 
 ```bash
-python higgs_dna/scripts/run_analysis.py \
+python3 higgs_dna/scripts/run_analysis.py \
     --json-analysis wwgg_2024_fl_test.json \
     --nano-version 15 \
     --executor iterative \
@@ -73,36 +43,57 @@ python higgs_dna/scripts/run_analysis.py \
     --dump ./test_output
 ```
 
-Replace `iterative` with `vanilla_lxplus --queue workday` to submit to HTCondor instead.
+For production jobs, replace `iterative` with `vanilla_lxplus --queue workday`.
 
-## 7. Check Output
-
-Check status: `condor_q $USER`
-
-## 8. Check Output
+## 4. Check Output
 
 ```bash
-python -c "
+python3 -c "
 import awkward as ak, glob
 fs = sorted(glob.glob('test_output/*/nominal/*.parquet'))
-e = ak.concatenate([ak.from_parquet(f) for f in fs])
+e = ak.from_parquet(fs[0])
 e = e[~ak.is_none(e.mass)]
 t = len(e)
 print(f'Events: {t}')
-print(f'  FH(0): {int(ak.sum(e.category==0)):6d} ({ak.sum(e.category==0)/t*100:.1f}%)')
-print(f'  SL(1): {int(ak.sum(e.category==1)):6d} ({ak.sum(e.category==1)/t*100:.1f}%)')
-print(f'  FL(2): {int(ak.sum(e.category==2)):6d} ({ak.sum(e.category==2)/t*100:.1f}%)')
+print(f'  FH(0): {int(ak.sum(e.category==0))}  SL(1): {int(ak.sum(e.category==1))}  FL(2): {int(ak.sum(e.category==2))}')
 "
 ```
 
+## 5. Use Other Samples
+
+Pre-fetched 2024 samples are in the repo:
+
+| File | Content |
+|------|---------|
+| `samples_2024_signal.json` | HH→WWγγ SM signal (FH/SL/FL), 276 files |
+| `samples_2024_background.json` | Background (GGJets, TTGG, single-H), 1,561 files |
+
+Keys: `WWgg_FH_2024`, `WWgg_SL_2024`, `WWgg_FL_2024` (signal); `GGJets_MGG-40to80_2024`, etc. (background).
+
+To run a different sample, edit `wwgg_2024_fl_test.json` — change `samplejson` and `year`:
+
+```json
+{
+  "samplejson": "samples_2024_signal.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {"WWgg_SL_2024": ["2023postBPix"]},
+  "corrections": {},
+  "systematics": {}
+}
+```
+
+Note: always use `Era2023_postBPix_v1` for `metaconditions` and `"2023postBPix"` for `year` when running 2024 data (the 2024 metaconditions are not yet available).
+
 ## Common Issues
 
-| Error | Fix |
-|-------|-----|
-| `AttributeError: no field named 'jetId'` | Use correct `--nano-version` (13 for 2023, 15 for 2024) |
-| `File did not open properly: [ERROR] Operation expired` | Run `voms-proxy-init --voms cms -valid 192:00` |
-| `File did not open properly: [3010] permission denied` | Wrong XRootD redirector. Use `root://cms-xrd-global.cern.ch/` |
-| `You are running over MC and not applying trigger SF` | Harmless warning, ignore |
-| Condor job stuck in Idle | Wait a few minutes. If >30 min, try `--queue tomorrow` |
-
-> Note: The POG JSON files (jet veto maps) may be missing — the workflow skips this step if files are unavailable. This is fine for a test run. If you need them, clone `https://github.com/cms-jet/POGJSONHIN.git` into `higgs_dna/systematics/JSONs/`.
+| Problem | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'higgs_dna'` | Run `pip install -e .` |
+| `ModuleNotFoundError: No module named 'coffea'` | `pip install coffea` |
+| `No module named 'yaml'` / `'dask'` / `'bokeh'` | `pip install pyyaml dask distributed bokeh jinja2` |
+| `FileNotFoundError: jetid.json.gz` | Run `git pull` (POG JSONs are now in the repo) |
+| `OSError: [3010] permission denied` | No grid proxy. Run `voms-proxy-init --voms cms` or use EOS local paths |
+| `Operation expired` | Run `voms-proxy-init --voms cms -valid 192:00` |
