@@ -5,9 +5,10 @@
 from typing import Any, Dict, List, Optional
 from higgs_dna.workflows.skeleton import HggSkeletonProcessor
 from higgs_dna.selections.photon_selections import photon_preselection
-from higgs_dna.selections.diphoton_selections import build_diphoton_candidates
+from higgs_dna.selections.diphoton_selections import build_diphoton_candidates, apply_fiducial_cut_det_level
 from higgs_dna.selections.lepton_selections import select_electrons, select_muons
 from higgs_dna.selections.jet_selections import select_jets, jetvetomap
+from higgs_dna.tools.jetID import add_jetId
 from higgs_dna.selections.object_selections import delta_r_mask
 from higgs_dna.selections.lumi_selections import select_lumis
 from higgs_dna.utils.dumping_utils import diphoton_ak_array, dump_ak_array, apply_naming_convention
@@ -78,39 +79,37 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # === WW-specific overrides (after skeleton defaults are set) ===
 
-        # Fiducial cuts — use classical_noIso (pT/mgg + mgg window, matching Note)
+        # Fiducial cuts — store_flag, same as HHbbgg
+        self.fiducialCuts = "store_flag"
 
-        # Photon preselection
+        # Photon preselection (aligned with bbgg preselection standards)
         self.min_pt_photon = 25.0
-        self.min_mvaid = -0.7
+        self.min_mvaid = -0.9
 
-        # Electron selection
+        # Electron selection (AN2025_108 Table 13 tight)
         self.electron_pt_threshold = 10.0
         self.electron_max_eta = 2.5
         self.electron_photon_min_dr = 0.4
-        self.electron_max_dxy = None
-        self.electron_max_dz = None
-        self.el_id_wp = "loose"
+        self.electron_max_dxy = 0.05
+        self.electron_max_dz = 0.1
+        self.el_id_wp = "loose"   # Note Table 13: EGamma POG MVA > WP-loose
 
-        # Muon selection
+        # Muon selection (AN2025_108 Table 14 tight)
         self.muon_pt_threshold = 10.0
         self.muon_max_eta = 2.4
         self.muon_photon_min_dr = 0.4
-        self.muon_max_dxy = None
-        self.muon_max_dz = None
-        self.mu_id_wp = "tight"
+        self.muon_max_dxy = 0.05
+        self.muon_max_dz = 0.1
+        self.mu_id_wp = "medium"
         self.mu_iso_wp = "loose"
         self.global_muon = True
 
-        # AK4 Jet selection
-        self.jet_pt_threshold = 25.0
-        self.jet_max_eta = 2.4
+        # AK4 Jet selection (aligned with bbgg)
+        # jet_pt_threshold=20 and jet_max_eta=4.7 from skeleton defaults
         self.jet_pho_min_dr = 0.4
-        self.jet_ele_min_dr = 0.4
-        self.jet_muo_min_dr = 0.4
         self.clean_jet_pho = True
-        self.clean_jet_ele = True
-        self.clean_jet_muo = True
+        self.clean_jet_ele = False   # bbgg: no dR(jet, e) cleaning
+        self.clean_jet_muo = False   # bbgg: no dR(jet, mu) cleaning
 
         # Event categories
         self.categories = {0: "FH", 1: "SL", 2: "FL"}
@@ -140,8 +139,8 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # =================================================================
         # === Photon preselection ===
-        # photons passing pT > 25, |η| < 2.5, mvaID > -0.7,
-        # pixel seed veto, H/E < 0.08, electron veto, pfRelIso03_all
+        # photons passing pT > 25, |η| < 2.5, mvaID > -0.9,
+        # pixel seed veto, H/E < 0.08, electron veto
         # =================================================================
         photons = events.Photon
         photons = photon_preselection(self, photons, events, year=year)
@@ -149,16 +148,11 @@ class WWggProcessor(HggSkeletonProcessor):
             return {}
 
         # =================================================================
-        # === Diphoton candidates (classical_noIso fiducial, AN Note §5.1) ===
-        #   lead pT > 35, pT/mgg > 1/3(lead) 1/4(sub), mgg ∈ [100,180]
+        # === Diphoton candidates (store_flag fiducial, same as HHbbgg) ===
         # =================================================================
         diphotons = build_diphoton_candidates(photons, self.min_pt_lead_photon)
-        diphotons = diphotons[
-            (diphotons.pho_lead.pt / diphotons.mass > 1.0 / 3.0) &
-            (diphotons.pho_sublead.pt / diphotons.mass > 1.0 / 4.0) &
-            (diphotons.mass > 100) &
-            (diphotons.mass < 180)
-        ]
+        diphotons = apply_fiducial_cut_det_level(self, diphotons)
+        diphotons = diphotons[diphotons.pass_fiducial_classical]
 
         # =================================================================
         # === Electron selection (loose cutBased, pT > 10, |η| < 2.5) ===
@@ -169,13 +163,33 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # raw leading electron (before cuts, for debugging)
         electrons["dR_pho"] = delta_r_mask(electrons, diphotons.pho_lead, 0.4)
-        raw_ele = electrons[(electrons.pt > 10) & electrons.dR_pho]
+        e_conept_raw = electrons.coneept if hasattr(electrons, "coneept") else electrons.pt
+        raw_ele = electrons[(e_conept_raw >= 10.0) & electrons.dR_pho]
         raw_ele = raw_ele[ak.argsort(raw_ele.pt, ascending=False)]
         first_raw_ele = ak.firsts(raw_ele)
 
         sel_ele = electrons[select_electrons(self, electrons, diphotons)]
+
+        # Tight electron cuts (AN2025_108 Table 13)
+        # ID (cutBased>=2) already applied by select_electrons
+        # Apply additional kinematics, isolation, quality cuts
+        e_conept = sel_ele.coneept if hasattr(sel_ele, "coneept") else sel_ele.pt
+        e_deltaEtaSC = sel_ele.deltaEtaSC if hasattr(sel_ele, "deltaEtaSC") else ak.zeros_like(sel_ele.eta)
+        scEta = abs(sel_ele.eta + e_deltaEtaSC)
+        sel_ele = sel_ele[
+            (e_conept >= 10.0) &
+            (sel_ele.miniPFRelIso_all <= 0.4) &
+            (sel_ele.sip3d < 8) &
+            (sel_ele.lostHits == 0) &
+            (sel_ele.convVeto) &
+            (sel_ele.hoe <= 0.10) &
+            (sel_ele.eInvMinusPInv >= -0.04) &
+            (sel_ele.promptMVA >= 0.30) &
+            (((scEta <= 1.479) & (sel_ele.sieie <= 0.011)) |
+             ((scEta > 1.479) & (sel_ele.sieie <= 0.030)))
+        ]
         n_ele = ak.num(sel_ele)
-        n_ele_post_pho = n_ele  # after photon dR cleaning
+        n_ele_post_pho = n_ele
 
         # =================================================================
         # === Muon selection (tight ID, loose iso, global, pT > 10) ===
@@ -184,22 +198,34 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # raw leading muon (before cuts, for debugging)
         muons["dR_pho"] = delta_r_mask(muons, diphotons.pho_lead, 0.4)
-        raw_mu = muons[(muons.pt > 10) & muons.dR_pho]
+        mu_conept_raw = muons.coneept if hasattr(muons, "coneept") else muons.pt
+        raw_mu = muons[(mu_conept_raw >= 10.0) & muons.dR_pho]
         raw_mu = raw_mu[ak.argsort(raw_mu.pt, ascending=False)]
         first_raw_mu = ak.firsts(raw_mu)
 
         sel_mu = muons[select_muons(self, muons, diphotons)]
+
+        # Tight muon cuts (AN2025_108 Table 14)
+        # ID (mediumId) already applied by select_muons
+        mu_conept = sel_mu.coneept if hasattr(sel_mu, "coneept") else sel_mu.pt
+        sel_mu = sel_mu[
+            (mu_conept >= 10.0) &
+            (sel_mu.miniPFRelIso_all <= 0.4) &
+            (sel_mu.sip3d < 8) &
+            (sel_mu.promptMVA >= 0.5)
+        ]
         n_mu = ak.num(sel_mu)
-        n_mu_post_pho = n_mu  # after photon dR cleaning
+        n_mu_post_pho = n_mu
 
         # === Combined lepton multiplicity ===
         n_lep = n_ele + n_mu
 
         # =================================================================
         # === AK4 Jet selection ===
-        # pT > 25, |η| < 2.4, tightLepVeto, dR cleaning vs γ/e/μ
+        # pT > 20, |η| < 4.7, tightLepVeto, dR cleaning vs photon only
         # =================================================================
         jets = events.Jet
+        jets["jetId"] = add_jetId(jets, self.nano_version, year)  # v15 doesn't store jetId
         jets_clean = select_jets(self, jets, diphotons, sel_mu, sel_ele)
         sel_jets = jets[jets_clean]
 
@@ -208,21 +234,6 @@ class WWggProcessor(HggSkeletonProcessor):
             n_jets = ak.num(sel_jets)
         except Exception:
             n_jets = ak.num(sel_jets)
-
-        # =================================================================
-        # === dR(lepton, jet) > 0.4 cleaning (from AN Note Table 9,10) ===
-        # =================================================================
-        n_ele_post_jet = n_ele  # before jet dR cleaning
-
-        sel_ele = sel_ele[delta_r_mask(sel_ele, sel_jets, 0.4)]
-        n_ele = ak.num(sel_ele)
-
-        n_mu_post_jet = n_mu  # before jet dR cleaning
-
-        sel_mu = sel_mu[delta_r_mask(sel_mu, sel_jets, 0.4)]
-        n_mu = ak.num(sel_mu)
-
-        n_lep = n_ele + n_mu
 
         # =================================================================
         # === Z-veto: |m(e± + γ_lead) - 91.2| > 5 GeV ===
@@ -339,11 +350,9 @@ class WWggProcessor(HggSkeletonProcessor):
 
             akarr["n_ele"] = n_ele[mask]
             akarr["n_mu"] = n_mu[mask]
-            # cut-flow counters (before/after each lepton cleaning step)
+            # cut-flow counters
             akarr["n_ele_post_pho"] = n_ele_post_pho[mask]
-            akarr["n_ele_post_jet"] = n_ele_post_jet[mask]
             akarr["n_mu_post_pho"] = n_mu_post_pho[mask]
-            akarr["n_mu_post_jet"] = n_mu_post_jet[mask]
             akarr["n_lep"] = n_lep[mask]
             akarr["n_jets"] = n_jets[mask]
             akarr["category"] = cat_mask

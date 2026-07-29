@@ -1,0 +1,10 @@
+{
+  "samplejson": "samples_2024_signal.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {"WWgg_SL_2024": ["2024"]},
+  "corrections": {},
+  "systematics": {}
+}
