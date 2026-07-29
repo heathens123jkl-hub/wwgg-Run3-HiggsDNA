@@ -15,10 +15,10 @@ cd test_WWgg
 conda create -n wwgg-run3 python=3.12 -y
 conda activate wwgg-run3
 
-# Install dependencies (use python3 since conda may not provide "python")
-pip install coffea awkward uproot vector correctionlib scipy==1.14.0 pyarrow matplotlib rich dask distributed pyyaml jinja2 bokeh
+# Install all required packages
+pip install coffea awkward uproot vector correctionlib scipy==1.14.0 pyarrow matplotlib rich dask distributed bokeh pyyaml jinja2
 
-# Install HiggsDNA itself
+# Install HiggsDNA itself as a package
 pip install -e .
 ```
 
