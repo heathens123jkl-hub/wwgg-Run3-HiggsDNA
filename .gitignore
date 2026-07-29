@@ -170,7 +170,7 @@ higgs_dna/systematics/JSONs/FNUF/
 higgs_dna/systematics/JSONs/Material
 higgs_dna/systematics/JSONs/ShowerShape/
 # Variable-based central (e.g. JME)
-higgs_dna/systematics/JSONs/POG/
+SS_2016postVFP_preliminary.json
 # B-Tagging efficiencies (analysis-specific), keep midRun3.json.gz as an example file
 higgs_dna/systematics/JSONs/bTagEff/
 !higgs_dna/systematics/JSONs/bTagEff/*/midRun3.json.gz
