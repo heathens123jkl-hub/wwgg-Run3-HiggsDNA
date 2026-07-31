@@ -7,7 +7,7 @@ Follow these steps. You should have a working test job in ~10 minutes.
 ## 1. Clone & Environment
 
 ```bash
-cd /eos/home-x/$USER
+cd your_own_EOS_directory
 git clone https://github.com/heathens123jkl-hub/wwgg-Run3-HiggsDNA.git wwgg_Run3
 cd wwgg_Run3
 
