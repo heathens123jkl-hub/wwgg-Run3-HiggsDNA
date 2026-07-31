@@ -22,7 +22,20 @@ pip install coffea awkward uproot vector correctionlib scipy==1.14.0 pyarrow mat
 pip install -e .
 ```
 
-## 2. Grid Proxy (for XRootD)
+## 2. Verify POG JSONs
+
+The POG JSONs (jet ID, b-tagging, EGM, pileup, muon) required for scale factors and corrections are bundled in `higgs_dna/systematics/JSONs/POG/`. No separate download is needed.
+
+If the bundled files are outdated or missing, clone the official source:
+```bash
+cd higgs_dna/systematics/JSONs/
+git clone https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration.git POG_tmp
+# The official repo nests files under POG_tmp/POG/. Move them up one level:
+cp -r POG_tmp/POG/* . && rm -rf POG_tmp
+```
+(Source: [cms-nanoAOD/jsonpog-integration](https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration) — official CMS JSON POG integration for NanoAOD. The repo has a nested `POG/POG/` directory structure — the `cp` step flattens it.)
+
+## 3. Grid Proxy (for XRootD)
 
 ```bash
 voms-proxy-init --voms cms -valid 192:00
@@ -30,7 +43,7 @@ voms-proxy-init --voms cms -valid 192:00
 
 If you don't have a grid certificate, use EOS local paths instead of `root://` URLs (lxplus has `/eos/cms/` mounted directly).
 
-## 3. Run the Test
+## 4. Run the Test
 
 A pre-configured single-file FL signal test is included.
 
@@ -60,7 +73,7 @@ python3 higgs_dna/scripts/run_analysis.py \
 condor_q $USER
 ```
 
-## 4. Check Output
+## 5. Check Output
 
 ```bash
 python3 -c "
@@ -74,7 +87,7 @@ print(f'  FH(0): {int(ak.sum(e.category==0))}  SL(1): {int(ak.sum(e.category==1)
 "
 ```
 
-## 5. Use Other Samples
+## 6. Use Other Samples
 
 Pre-fetched 2024 samples are in the repo:
 
