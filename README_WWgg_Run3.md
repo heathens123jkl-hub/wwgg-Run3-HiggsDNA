@@ -7,9 +7,9 @@ Follow these steps. You should have a working test job in ~10 minutes.
 ## 1. Clone & Environment
 
 ```bash
-mkdir -p /eos/home-x/$USER/WWyy && cd /eos/home-x/$USER/WWyy
-git clone https://github.com/heathens123jkl-hub/wwgg-Run3-HiggsDNA.git test_WWgg
-cd test_WWgg
+cd /eos/home-x/$USER
+git clone https://github.com/heathens123jkl-hub/wwgg-Run3-HiggsDNA.git wwgg_Run3
+cd wwgg_Run3
 
 # Create conda environment
 conda create -n wwgg-run3 python=3.12 -y
@@ -33,7 +33,7 @@ git clone https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration.git POG_tmp
 # The official repo nests files under POG_tmp/POG/. Move them up one level:
 cp -r POG_tmp/POG/* . && rm -rf POG_tmp
 ```
-(Source: [cms-nanoAOD/jsonpog-integration](https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration) — official CMS JSON POG integration for NanoAOD. The repo has a nested `POG/POG/` directory structure — the `cp` step flattens it.)
+(Source: [cms-nanoAOD/jsonpog-integration](https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration) — official CMS JSON POG integration for NanoAOD.)
 
 ## 3. Grid Proxy (for XRootD)
 
@@ -41,7 +41,6 @@ cp -r POG_tmp/POG/* . && rm -rf POG_tmp
 voms-proxy-init --voms cms -valid 192:00
 ```
 
-If you don't have a grid certificate, use EOS local paths instead of `root://` URLs (lxplus has `/eos/cms/` mounted directly).
 
 ## 4. Run the Test
 
@@ -265,5 +264,5 @@ Events not matching any category (n_lep == 0 but n_jets < 4, or failing all FL c
 | `ModuleNotFoundError: No module named 'coffea'` | `pip install coffea` |
 | `No module named 'yaml'` / `'dask'` / `'bokeh'` | `pip install pyyaml dask distributed bokeh jinja2` |
 | `FileNotFoundError: jetid.json.gz` | Run `git pull` (POG JSONs are now in the repo) |
-| `OSError: [3010] permission denied` | No grid proxy. Run `voms-proxy-init --voms cms` or use EOS local paths |
+| `OSError: [3010] permission denied` | No grid proxy. Run `voms-proxy-init --voms cms` |
 | `Operation expired` | Run `voms-proxy-init --voms cms -valid 192:00` |
