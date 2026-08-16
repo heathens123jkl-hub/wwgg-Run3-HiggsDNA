@@ -1,10 +1,10 @@
 {
-  "samplejson": "samples_2024_signal.json",
+  "samplejson": "cf_FH_samples.json",
   "workflow": "WWgg",
   "metaconditions": "Era2023_postBPix_v1",
   "taggers": [],
   "split_mc": false,
   "year": {"WWgg_FH_2024": ["2024"]},
-  "corrections": {},
+  "corrections": {"WWgg_FH_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"]},
   "systematics": {}
 }
