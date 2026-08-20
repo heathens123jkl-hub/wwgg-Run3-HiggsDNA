@@ -1,0 +1,24 @@
+{
+  "samplejson": "production/samples/samples_singleH_2024.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "GluGluHtoGG_2024": ["2024"],
+    "VBFHtoGG_2024": ["2024"],
+    "ttHtoGG_2024": ["2024"],
+    "VH_ZH_2024": ["2024"],
+    "VH_WplusH_2024": ["2024"],
+    "VH_WminusH_2024": ["2024"]
+  },
+  "corrections": {
+    "GluGluHtoGG_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"],
+    "VBFHtoGG_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"],
+    "ttHtoGG_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"],
+    "VH_ZH_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"],
+    "VH_WplusH_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"],
+    "VH_WminusH_2024": ["Smearing2G_IJazZ", "TriggerSF", "Pileup", "LoosePhoIDSF", "ElectronVetoSF", "PreselSF"]
+  },
+  "systematics": {}
+}
