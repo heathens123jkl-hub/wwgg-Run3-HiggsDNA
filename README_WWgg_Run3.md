@@ -1,6 +1,12 @@
 # Run3 HH→WWγ Preselection — Setup & Run Guide
 
-## Output feature extension (2026-09-23; pending real NanoAOD smoke tests)
+## Collaboration synchronization (2026-09-24)
+
+See [README_WWgg_SYNC.md](README_WWgg_SYNC.md) for the inspected code version,
+baseline versus loose selection definitions, the reported lxplus smoke-test
+status, and the event-level continuum-background handoff checklist.
+
+## Output feature extension (2026-09-23; small-sample lxplus checks completed)
 
 `WWgg.py` now calls the output-only `workflows/wwgg_features.py` module on the
 selected candidate and selected objects. It exports fixed-schema photon,
@@ -11,7 +17,7 @@ changed by this module. See the canonical optimization tool's
 Do not use all output columns as ML inputs: mass, truth and provenance need
 to remain outside the classifier input whitelist.
 
-## Selection-study extension (2026-09-22; pending lxplus validation)
+## Selection-study extension (2026-09-22; full-production validation pending)
 
 The original selection remains the default. A copy of the analysis JSON can
 contain a top-level `wwgg_selection` object with `z_veto` and
