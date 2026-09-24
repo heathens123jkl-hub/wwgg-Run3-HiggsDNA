@@ -8,6 +8,9 @@ The analysis implementation was introduced in commit `4a13f74`. Record the
 full checked-out commit with `git rev-parse HEAD` when exchanging results.
 Use the [fixed small-data test](production/crosscheck_20260924/README.md)
 to compare identical input and selection settings before full production.
+The shared small-data test uses the original selection: both flags are
+`apply`. The loose production configuration described below is for the
+separate optimization study, not this comparison with Tahir.
 
 The inspected `higgs_dna/workflows/WWgg.py` SHA256 is
 `98ca982bdc2ba7e2f9b6a02dd53c3587845bd58e9ffad8a94daf0da1679e45e8`.

@@ -21,7 +21,11 @@ PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}" python -c 'import importlib; print(
 
 The imported workflow must be inside this checkout.
 
-## Baseline first
+## Original selection
+
+This cross-check keeps the original Z veto and both photon pT/mass cuts
+applied. It uses the updated code and additional output variables without
+relaxing those selection requirements.
 
 Both users run exactly this command in their own checkout:
 
@@ -48,19 +52,6 @@ all output features. If identities differ, compare the two event lists and
 cutflows privately to find the first difference. If they agree, then compare
 candidate/object variables and parquet schema. A small sample may contain no
 FL events and cannot establish FL agreement for the full dataset.
-
-## Loose configuration second
-
-After the baseline comparison, both users can run:
-
-```bash
-PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}" python3 higgs_dna/scripts/run_analysis.py --json-analysis production/crosscheck_20260924/loose.json --nano-version 15 --executor iterative --chunk 100000 --max 1 --timeout 300 --dump ./output_crosscheck_loose_20260924 --save hists_crosscheck_loose_20260924.coffea
-```
-
-Change the output path in the count command to compare loose with loose.
-Baseline and loose use the same input, corrections and settings except the
-two explicit selection flags. Loose does not relax photon ID, and does not
-produce a fake-photon DD control sample automatically.
 
 ## Scope of the result
 
