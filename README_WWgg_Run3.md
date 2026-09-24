@@ -2,9 +2,8 @@
 
 ## Collaboration synchronization (2026-09-24)
 
-See [README_WWgg_SYNC.md](README_WWgg_SYNC.md) for the inspected code version,
-baseline versus loose selection definitions, the reported lxplus smoke-test
-status, and the event-level continuum-background handoff checklist.
+See the [short update and usage guide](production/crosscheck_20260924/README.md)
+for the new output variables, JSON selection switches and 2024C submission command.
 
 ## Output feature extension (2026-09-23; small-sample lxplus checks completed)
 
