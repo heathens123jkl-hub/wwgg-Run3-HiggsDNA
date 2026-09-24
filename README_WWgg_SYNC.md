@@ -6,9 +6,9 @@ Prepared on 2026-09-24. Repository: https://github.com/heathens123jkl-hub/wwgg-R
 
 The analysis implementation was introduced in commit `4a13f74`. Record the
 full checked-out commit with `git rev-parse HEAD` when exchanging results.
-Use the [fixed small-data test](production/crosscheck_20260924/README.md)
+Use the [full 2024C data cross-check](production/crosscheck_20260924/README.md)
 to compare identical input and selection settings before full production.
-The shared small-data test uses the original selection: both flags are
+The shared 2024C test uses the original selection: both flags are
 `apply`. The loose production configuration described below is for the
 separate optimization study, not this comparison with Tahir.
 
@@ -51,7 +51,13 @@ old cut flags to the saved loose candidate does not exactly reproduce a
 baseline production. Compare baseline with baseline when investigating the
 old data-count discrepancy; do not compare old tight totals to new loose totals.
 
-## Reproducible small-file cross-check
+## Reproducible data cross-check
+
+The agreed comparison now covers all 414 Run2024C EG0/EG1 files in the
+existing production list, with no file/chunk limit. The linked instructions
+include the native Condor command. The original single-file test remains
+available only as a diagnostic. Compare streams separately and check overlap
+removal and file coverage before quoting merged counts.
 
 Before large production, agree on the same code commit, analysis JSON,
 NanoAOD file, era, correction payload versions and processing range. Record
