@@ -8,7 +8,7 @@ import json
 import yaml
 import numpy as np
 from importlib import resources
-from higgs_dna.scripts.postprocessing.tools.postprocessing_tools import split_awkward_arrays_by_length, ensure_nweight_LHEScale, make_tree
+from higgs_dna.scripts.postprocessing.tools.postprocessing_tools import split_awkward_arrays_by_length, ensure_nweight_LHEScale, make_tree, prepare_branch_array
 
 def main():
     parser = argparse.ArgumentParser(
@@ -394,19 +394,11 @@ def main():
 
                     logger.info(f"Adding cat {cat} to ROOT file...")
 
-                    split_dict = split_awkward_arrays_by_length(df_dict[cat], logger, target_length=int(args.tbasket_length))
-
-                    for i, current_dict in enumerate(split_dict):
-                        current_dict = ensure_nweight_LHEScale(current_dict)
-                        logger.debug(f"Adding {i + 1}th dict out of {len(split_dict)}")
-
-                        array_sizes = {key: arr.nbytes for key, arr in current_dict.items()}
-                        logger.debug(f"Size of current_dict: {sum(array_sizes.values())}")
-
-                        if i == 0:
-                            make_tree(file, names[cat], current_dict)
-                        else:
-                            file[names[cat]].extend(current_dict)
+                    # single-shot write: TTree.extend yields wrong entry counts in this
+                    # uproot version, so write the whole category in one assignment
+                    full_dict = {key: prepare_branch_array(array) for key, array in df_dict[cat].items()}
+                    full_dict = ensure_nweight_LHEScale(full_dict)
+                    make_tree(file, names[cat], full_dict)
 
                     if notag:
                         # this is wrong, to be fixed

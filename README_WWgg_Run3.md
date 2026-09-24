@@ -1,5 +1,34 @@
 # Run3 HH→WWγ Preselection — Setup & Run Guide
 
+## Output feature extension (2026-09-23; pending real NanoAOD smoke tests)
+
+`WWgg.py` now calls the output-only `workflows/wwgg_features.py` module on the
+selected candidate and selected objects. It exports fixed-schema photon,
+lepton, jet, MET, FL cut-study and separate truth diagnostics. Missing values
+are NaN with explicit validity flags. Existing selection and weights are not
+changed by this module. See the canonical optimization tool's
+`HIGGSDNA_FEATURES.md` for the variable definitions, installer and tests.
+Do not use all output columns as ML inputs: mass, truth and provenance need
+to remain outside the classifier input whitelist.
+
+## Selection-study extension (2026-09-22; pending lxplus validation)
+
+The original selection remains the default. A copy of the analysis JSON can
+contain a top-level `wwgg_selection` object with `z_veto` and
+`diphoton_pt_over_mass`, each set to `apply` or `store_only`.
+Setting both to `store_only` retains events rejected by these cuts while
+preserving absolute photon pT, ID, isolation, eta and mass cuts.
+Output includes baseline cut flags, event IDs, selection modes and candidate
+list diagnostics. Relaxing candidate cuts can change object cleaning and
+categories; reapplying old cuts to the stored candidate is not an exact replay.
+
+The existing `wwgg_tools/selection_optimization/` tool contains the reviewed
+installer and `HIGGSDNA_STUDY.md`. Test the four modes on identical small inputs
+first. Full production continues to use the native command
+`run_analysis.py --executor vanilla_lxplus --queue workday`; no separate
+handwritten Condor submission is needed. Use new output directories and
+preserve the actual production corrections and trigger settings.
+
 Follow these steps. You should have a working test job in ~10 minutes.
 
 ---

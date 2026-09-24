@@ -183,8 +183,7 @@ def make_tree(file, treename, branch_dict):
     The branch_dict should have the branch names as keys
     and the corresponding arrays (as NumPy or Awkward) as values.
     """
-    if _use_mktree:
-        file.mkdir(treename.rsplit("/", 1)[0])
-        file.mktree(treename, branch_dict)
-    else:
-        file[treename] = branch_dict
+    file.mkdir(treename.rsplit("/", 1)[0])
+    # mktree (not assignment): uproot >= 5.7 writes RNTuple on assignment,
+    # but flashgg needs plain TTrees
+    file.mktree(treename, branch_dict)

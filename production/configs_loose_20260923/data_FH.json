@@ -1,0 +1,40 @@
+{
+  "samplejson": "production/samples/samples_data_FH.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "Run2024F_EG0": [
+      "2024"
+    ],
+    "Run2024F_EG1": [
+      "2024"
+    ],
+    "Run2024H_EG0": [
+      "2024"
+    ],
+    "Run2024H_EG1": [
+      "2024"
+    ]
+  },
+  "corrections": {
+    "Run2024F_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024F_EG1": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024H_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024H_EG1": [
+      "Scale2G_IJazZ"
+    ]
+  },
+  "systematics": {},
+  "wwgg_selection": {
+    "z_veto": "store_only",
+    "diphoton_pt_over_mass": "store_only"
+  }
+}

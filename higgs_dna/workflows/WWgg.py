@@ -4,6 +4,7 @@
 
 from typing import Any, Dict, List, Optional
 from higgs_dna.workflows.skeleton import HggSkeletonProcessor
+from higgs_dna.workflows.wwgg_features import build_features, SCHEMA_VERSION as WWGG_FEATURE_SCHEMA
 from higgs_dna.selections.photon_selections import photon_preselection
 from higgs_dna.selections.diphoton_selections import build_diphoton_candidates, apply_fiducial_cut_det_level
 from higgs_dna.selections.lepton_selections import select_electrons, select_muons
@@ -22,10 +23,38 @@ import numpy
 import vector
 import logging
 import warnings
+import json
+import hashlib
+from pathlib import Path
 from coffea.analysis_tools import Weights
 
 logger = logging.getLogger(__name__)
 vector.register_awkward()
+
+
+def wwgg_selection_options(options=None):
+    """Explicit production contract; absent configuration preserves old cuts."""
+    result = {"z_veto": "apply", "diphoton_pt_over_mass": "apply"}
+    if options is not None:
+        if not isinstance(options, dict) or set(options) - set(result):
+            raise ValueError("Unknown WWgg selection options")
+        result.update(options)
+    if any(v not in ("apply", "store_only") for v in result.values()):
+        raise ValueError("WWgg selection modes must be apply or store_only")
+    return result
+
+
+def wwgg_fiducial_mask(diphotons, mode):
+    """Relax only the two photon pT/mass cuts; preserve isolation and eta."""
+    if mode == "apply":
+        return diphotons.pass_fiducial_classical
+    if mode != "store_only":
+        raise ValueError("Invalid diphoton selection mode")
+    lead, sublead = diphotons.pho_lead, diphotons.pho_sublead
+    lead_iso = lead.pfRelIso03_all if hasattr(lead, "pfRelIso03_all") else lead.pfRelIso03_all_quadratic
+    sublead_iso = sublead.pfRelIso03_all if hasattr(sublead, "pfRelIso03_all") else sublead.pfRelIso03_all_quadratic
+    return ((lead_iso * lead.pt < 10) & (sublead_iso * sublead.pt < 10)
+            & (abs(lead.eta) < 2.5) & (abs(sublead.eta) < 2.5))
 
 
 class WWggProcessor(HggSkeletonProcessor):
@@ -35,7 +64,7 @@ class WWggProcessor(HggSkeletonProcessor):
     Event categories (AN Note §5.2-5.4):
       Cat 0: FH — 0 lepton + ≥4 jets  (WW→qqqq)
       Cat 1: SL — 1 lepton            (WW→qqℓν)
-      Cat 2: FL — ≥2 leptons + MET>20 + pT(γγ)>91 + Z→ll veto + b-veto  (WW→ℓνℓν)
+      Cat 2: FL — ≥2 leptons; MET, pT(γγ), mll and b-tag are stored for optimization.
     """
 
     def __init__(
@@ -60,7 +89,11 @@ class WWggProcessor(HggSkeletonProcessor):
         validate_with_electrons: bool = False,
         output_format: str = "parquet",
         split_mc: bool = False,
+        wwgg_selection: Optional[Dict[str, str]] = None,
     ) -> None:
+        self.wwgg_selection = wwgg_selection_options(wwgg_selection)
+        self.wwgg_source_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        self.wwgg_features_sha256 = hashlib.sha256(Path(__file__).with_name('wwgg_features.py').read_bytes()).hexdigest()
         super().__init__(
             metaconditions,
             systematics=systematics,
@@ -119,6 +152,7 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # Event categories
         self.categories = {0: "FH", 1: "SL", 2: "FL"}
+        logger.info("WWgg selection contract: %s", self.wwgg_selection)
 
         logger.info("[WWggProcessor] Initialized for non-resonant HH→WWγγ")
 
@@ -213,8 +247,16 @@ class WWggProcessor(HggSkeletonProcessor):
         # =================================================================
         diphotons = build_diphoton_candidates(photons, self.min_pt_lead_photon)
         diphotons = apply_fiducial_cut_det_level(self, diphotons)
-        diphotons = diphotons[diphotons.pass_fiducial_classical]
+        diphotons = diphotons[wwgg_fiducial_mask(diphotons, self.wwgg_selection["diphoton_pt_over_mass"])]
         diphotons = diphotons[(diphotons.mass > 100) & (diphotons.mass < 180)]  # Higgs mass window
+
+        # Rank is within the relaxed candidate list, ordered by diphoton pT.
+        # Cleaning uses the entire list; even an unchanged first candidate does
+        # not guarantee identical lepton/jet definitions to baseline production.
+        candidate_count = ak.num(diphotons)
+        baseline_candidate_count = ak.sum(diphotons.pass_fiducial_classical, axis=1)
+        baseline_candidate_rank = ak.fill_none(ak.firsts(
+            ak.local_index(diphotons, axis=1)[diphotons.pass_fiducial_classical]), -1)
 
         has_dipho = ak.num(diphotons) > 0  # baseline for all post-diphoton cutflow
 
@@ -457,7 +499,15 @@ class WWggProcessor(HggSkeletonProcessor):
         fl_cf = {}
 
         # Compute FL diagnostic variables for output (not used as cuts)
-        fl_out = {}
+        # Always define these branches, including chunks without FL events.
+        fl_out = {
+            "fl_met_pt": events.PuppiMET.pt,
+            "fl_dipho_pt": ak.fill_none(ak.firsts(diphotons.pt), -999),
+            "fl_diagnostics_valid": ak.fill_none(cat_fl_base, False),
+        }
+        for key in ("fl_mll", "fl_lead_lep_pt", "fl_sublead_lep_pt", "fl_drll"):
+            fl_out[key] = ak.ones_like(n_lep, dtype=numpy.float64) * -999
+        fl_out["fl_has_btag"] = ak.zeros_like(n_lep, dtype=bool)
         if ak.any(cat_fl_base):
             all_lep = ak.concatenate([sel_ele, sel_mu], axis=1)
             all_lep = all_lep[ak.argsort(all_lep.pt, ascending=False)]
@@ -487,11 +537,14 @@ class WWggProcessor(HggSkeletonProcessor):
         # =================================================================
         # === Final preselection ===
         # =================================================================
-        presel = pho_id & Z_veto & (cat >= 0)
+        Z_veto_applied = Z_veto if self.wwgg_selection["z_veto"] == "apply" else ak.ones_like(n_jets, dtype=bool)
+        presel = pho_id & Z_veto_applied & (cat >= 0)
 
         # drop events without a preselected diphoton candidate (same as HHbbgg L1550)
         sel_none = ~ak.is_none(ak.firsts(diphotons))
-        mask = presel & sel_none
+        # Option-bool slicing preserves None as an empty output slot.
+        # Only explicit True decisions represent selected events.
+        mask = ak.fill_none(presel & sel_none, False)
         diphotons = diphotons[mask]
 
         # =================================================================
@@ -508,6 +561,20 @@ class WWggProcessor(HggSkeletonProcessor):
             akarr["n_lep"] = n_lep[mask]
             akarr["n_jets"] = n_jets[mask]
             akarr["category"] = cat_mask
+            for key in ("run", "luminosityBlock", "event"):
+                akarr[key] = events[key][mask]
+            akarr["pass_zveto_baseline"] = ak.fill_none(Z_veto[mask], False)
+            akarr["pass_lead_ratio_baseline"] = first_diphoton.pho_lead.pt / first_diphoton.mass > 1 / 3
+            akarr["pass_sublead_ratio_baseline"] = first_diphoton.pho_sublead.pt / first_diphoton.mass > 1 / 4
+            akarr["pass_baseline_on_stored_candidate"] = (
+                akarr["pass_zveto_baseline"] & akarr["pass_lead_ratio_baseline"]
+                & akarr["pass_sublead_ratio_baseline"])
+            akarr["zveto_applied"] = ak.ones_like(cat_mask, dtype=bool) & (self.wwgg_selection["z_veto"] == "apply")
+            akarr["pt_over_mass_applied"] = ak.ones_like(cat_mask, dtype=bool) & (self.wwgg_selection["diphoton_pt_over_mass"] == "apply")
+            akarr["n_diphoton_candidates"] = candidate_count[mask]
+            akarr["n_baseline_diphoton_candidates"] = baseline_candidate_count[mask]
+            akarr["baseline_candidate_rank"] = baseline_candidate_rank[mask]
+            akarr["candidate_collection_matches_baseline"] = candidate_count[mask] == baseline_candidate_count[mask]
 
             # === Event weights (same architecture as HHbbgg) ===
             if self.data_kind == "mc":
@@ -588,12 +655,35 @@ class WWggProcessor(HggSkeletonProcessor):
                 Z_megamma = ak.fill_none(ak.where(has_ele_mask, (ele_4v + pho_4v).mass, -999), -999)
             akarr["Z_megamma"] = Z_megamma
 
+            # Output-only variables built from the very same candidate and objects.
+            # No cut or weight calculation is delegated to this helper.
+            features = build_features(events[mask], first_diphoton, sel_ele[mask],
+                                      sel_mu[mask], sel_jets[mask], self.data_kind == 'mc')
+            for key, value in features.items():
+                if key in akarr.fields:
+                    raise RuntimeError('Duplicate WWgg output column: '+key)
+                akarr[key] = value
+            source_file = str(events.metadata.get('filename', ''))
+            source_id = int(hashlib.sha256(source_file.encode()).hexdigest()[:16], 16)
+            akarr['audit_source_file_id'] = numpy.full(len(akarr), source_id, dtype=numpy.uint64)
+
             akarr = akarr[
                 [field for field in akarr.fields if "lead_fixedGridRhoAll" not in field]
             ]
 
             fname = apply_naming_convention(self, events)
-            metadata = {}
+            metadata = {
+                "wwgg_selection": json.dumps(self.wwgg_selection, sort_keys=True),
+                "wwgg_source_sha256": self.wwgg_source_sha256,
+                "wwgg_selection_schema": "1",
+                "wwgg_feature_schema": WWGG_FEATURE_SCHEMA,
+                "wwgg_features_sha256": self.wwgg_features_sha256,
+                "wwgg_dataset": dataset_name,
+                "wwgg_era": str(year),
+                "wwgg_source_file": source_file,
+                "wwgg_source_file_id": str(source_id),
+                "wwgg_corrections": json.dumps(correction_names),
+            }
             if self.data_kind == "mc":
                 metadata["sum_genw_presel"] = str(sum_genw_presel)
                 metadata["sum_weight_central"] = str(
@@ -601,6 +691,16 @@ class WWggProcessor(HggSkeletonProcessor):
                 )
             else:
                 metadata["sum_genw_presel"] = "Data"
+            # Store weighted pass/fail accounting on the saved candidate, not
+            # a claim of exact baseline replay when the candidate list changes.
+            for flag in ("pass_zveto_baseline", "pass_lead_ratio_baseline",
+                         "pass_sublead_ratio_baseline", "pass_baseline_on_stored_candidate"):
+                for state in (True, False):
+                    weights = akarr["weight"][akarr[flag] == state]
+                    prefix = flag + ("_pass" if state else "_fail")
+                    metadata[prefix + "_rows"] = str(len(weights))
+                    metadata[prefix + "_sumw"] = str(float(ak.sum(weights)))
+                    metadata[prefix + "_sumw2"] = str(float(ak.sum(weights * weights)))
             subdirs = []
             if "dataset" in events.metadata:
                 subdirs.append(events.metadata["dataset"])

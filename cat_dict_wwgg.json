@@ -1,0 +1,11 @@
+{
+    "FH": {
+        "cat_filter": [["category", "==", 0]]
+    },
+    "SL": {
+        "cat_filter": [["category", "==", 1]]
+    },
+    "FL": {
+        "cat_filter": [["category", "==", 2]]
+    }
+}

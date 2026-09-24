@@ -1,0 +1,11 @@
+# outfiles map for WWgg processes (used by convert_parquet_to_root.py)
+gghh_FH:    "output_gghh_FH.root"
+gghh_SL:    "output_gghh_SL.root"
+gghh_FL:    "output_gghh_FL.root"
+ggH:        "output_GluGluHToGG.root"
+VBFH:       "output_VBFHToGG.root"
+ttH:        "output_ttHToGG.root"
+ZH:         "output_ZHToGG.root"
+WplusH:     "output_WplusHToGG.root"
+WminusH:    "output_WminusHToGG.root"
+data:       "allData.root"

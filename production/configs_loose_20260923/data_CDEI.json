@@ -1,0 +1,76 @@
+{
+  "samplejson": "production/samples/samples_data_CDEI.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "Run2024C_EG0": [
+      "2024"
+    ],
+    "Run2024C_EG1": [
+      "2024"
+    ],
+    "Run2024D_EG0": [
+      "2024"
+    ],
+    "Run2024D_EG1": [
+      "2024"
+    ],
+    "Run2024E_EG0": [
+      "2024"
+    ],
+    "Run2024E_EG1": [
+      "2024"
+    ],
+    "Run2024I_EG0": [
+      "2024"
+    ],
+    "Run2024I_EG1": [
+      "2024"
+    ],
+    "Run2024I_EG0_v2": [
+      "2024"
+    ],
+    "Run2024I_EG1_v2": [
+      "2024"
+    ]
+  },
+  "corrections": {
+    "Run2024C_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024C_EG1": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024D_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024D_EG1": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024E_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024E_EG1": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024I_EG0": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024I_EG1": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024I_EG0_v2": [
+      "Scale2G_IJazZ"
+    ],
+    "Run2024I_EG1_v2": [
+      "Scale2G_IJazZ"
+    ]
+  },
+  "systematics": {},
+  "wwgg_selection": {
+    "z_veto": "store_only",
+    "diphoton_pt_over_mass": "store_only"
+  }
+}
