@@ -1,5 +1,12 @@
 # Run3 HH→WWγ Preselection — Setup & Run Guide
 
+## Corrections and veto re-production (2026-10-30)
+
+Use the [new nominal production guide](production/wwgg/PRODUCTION_20261030.md)
+and its explicit configs for the updated JME, photon Flow, lepton SFs, tau/b
+vetos and MC b-efficiency accumulation. Earlier commands below do not enable
+these additions. Remaining SF and uncertainty limitations are documented there.
+
 ## Collaboration synchronization (2026-09-24)
 
 See the [short update and usage guide](production/crosscheck_20260924/README.md)

@@ -7,7 +7,7 @@ import sys
 import os
 
 
-def apply_flow_corrections_to_photons(photons, events, meta, year, add_photonid_mva_function, logger=None):
+def apply_flow_corrections_to_photons(photons, events, meta, year, add_photonid_mva_function, logger=None, precision=None):
     """
     Apply normalizing flow corrections to the photon collection and update the photonID MVA.
 
@@ -32,15 +32,19 @@ def apply_flow_corrections_to_photons(photons, events, meta, year, add_photonid_
     # Get counts to be used for unflattening the corrected inputs.
     counts = photons.num() if hasattr(photons, "num") else ak.num(photons)
 
+    if int(ak.sum(counts)) == 0:
+        return photons
     # Calculate corrected inputs
     corrected_inputs, var_list = calculate_flow_corrections(
         photons,
         events,
         meta["flashggPhotons"]["flow_inputs"],
         meta["flashggPhotons"]["Isolation_transform_order"],
-        year=year
+        year=year, precision=precision
     )
 
+    if not np.isfinite(corrected_inputs).all():
+        raise ValueError("Nonfinite Flow-corrected photon inputs")
     # Preserve the original photonID MVA before applying corrections.
     photons["mvaID_nano"] = photons["mvaID"]
 
@@ -55,16 +59,16 @@ def apply_flow_corrections_to_photons(photons, events, meta, year, add_photonid_
     updated_mva = add_photonid_mva_function(photons, events)
     if hasattr(updated_mva, "fields") and "mvaID" in updated_mva.fields:
         photons["mvaID"] = updated_mva["mvaID"]
-    elif len(updated_mva) == len(counts):
+    elif getattr(updated_mva, "ndim", None) == 2:
         photons["mvaID"] = updated_mva
     else:
         photons["mvaID"] = ak.unflatten(updated_mva, counts)
 
-    return photons
+    return ak.to_packed(photons)
 
 
 # Function responsible for applyting the flow and calculate the per photon corrections in the mvaID inputs and in the sigma_E/E
-def calculate_flow_corrections(photon: ak.Array, events, inputs_list, isolation_indexes , year="2022postEE"):
+def calculate_flow_corrections(photon: ak.Array, events, inputs_list, isolation_indexes , year="2022postEE", precision=None):
 
     """
     Perform the evaluation of pre-trained flow models for simulation to data corrections
@@ -141,6 +145,11 @@ def calculate_flow_corrections(photon: ak.Array, events, inputs_list, isolation_
     # numpy to pytorch
     flow_conditions = torch.tensor(flow_conditions)
     flow_inputs = torch.tensor(flow_inputs)
+    if precision not in (None, "float64"):
+        raise ValueError("Unsupported flow precision")
+    if precision == "float64":
+        flow_inputs = flow_inputs.double()
+        flow_conditions = flow_conditions.double()
 
     input_tensor, conditions_tensor, input_mean_for_std, input_std_for_std, condition_mean_for_std,condition_std_for_std, vector_for_iso_constructors_mc = perform_pre_processing(flow_inputs,flow_conditions,isolation_indexes,path_means_std,year=year)
 

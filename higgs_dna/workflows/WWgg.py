@@ -8,7 +8,7 @@ from higgs_dna.workflows.wwgg_features import build_features, SCHEMA_VERSION as 
 from higgs_dna.selections.photon_selections import photon_preselection
 from higgs_dna.selections.diphoton_selections import build_diphoton_candidates, apply_fiducial_cut_det_level
 from higgs_dna.selections.lepton_selections import select_electrons, select_muons
-from higgs_dna.selections.jet_selections import select_jets, jetvetomap
+from higgs_dna.selections.jet_selections import select_jets, select_jets_eta_dependent, jetvetomap
 from higgs_dna.tools.jetID import add_jetId
 from higgs_dna.selections.object_selections import delta_r_mask
 from higgs_dna.selections.lumi_selections import select_lumis
@@ -34,14 +34,51 @@ vector.register_awkward()
 
 def wwgg_selection_options(options=None):
     """Explicit production contract; absent configuration preserves old cuts."""
-    result = {"z_veto": "apply", "diphoton_pt_over_mass": "apply"}
+    result = {"z_veto": "apply", "diphoton_pt_over_mass": "apply",
+              "jet_pt_scheme": "baseline"}
     if options is not None:
         if not isinstance(options, dict) or set(options) - set(result):
             raise ValueError("Unknown WWgg selection options")
         result.update(options)
-    if any(v not in ("apply", "store_only") for v in result.values()):
+    if any(result[k] not in ("apply", "store_only") for k in ("z_veto", "diphoton_pt_over_mass")):
         raise ValueError("WWgg selection modes must be apply or store_only")
+    if result['jet_pt_scheme'] not in ('baseline', 'hhbbgg_2024'):
+        raise ValueError('Unknown WWgg jet pt scheme')
     return result
+
+
+def wwgg_validate_corrections(names, object_registry, weight_registry):
+    """Do not silently drop misspelled or duplicated production corrections."""
+    if not isinstance(names, (list, tuple)) or any(not isinstance(n, str) for n in names):
+        raise ValueError('WWgg corrections must be a list of names')
+    if len(set(names)) != len(names):
+        raise ValueError('Duplicate WWgg correction: would apply a factor twice')
+    unknown = set(names) - set(object_registry) - set(weight_registry)
+    if unknown:
+        raise ValueError('Unknown WWgg corrections: ' + ', '.join(sorted(unknown)))
+
+
+def wwgg_apply_photon_flow(processor, events, year):
+    """Reuse the HHbbgg nominal flow route, only when explicitly enabled."""
+    if processor.data_kind != 'mc' or not processor.doFlow_corrections:
+        return events
+    from higgs_dna.tools.flow_corrections import apply_flow_corrections_to_photons
+    events['Photon'] = apply_flow_corrections_to_photons(
+        events.Photon, events, processor.meta, year,
+        processor.resolve_flows_photonid_mva(events), logger, precision="float64",
+    )
+    return events
+
+
+def wwgg_select_jets(processor, jets, diphotons, muons, electrons, year):
+    scheme = processor.wwgg_selection['jet_pt_scheme']
+    if scheme == 'hhbbgg_2024':
+        if year != '2024':
+            raise ValueError('hhbbgg_2024 jet selection requires year=2024')
+        processor.jet_eta_thresholds = [2.5, 3.0, 4.7]
+        processor.jet_pt_thresholds = [20, 50, 20]
+        return select_jets_eta_dependent(processor, jets, diphotons, muons, electrons)
+    return select_jets(processor, jets, diphotons, muons, electrons)
 
 
 def wwgg_fiducial_mask(diphotons, mode):
@@ -55,6 +92,33 @@ def wwgg_fiducial_mask(diphotons, mode):
     sublead_iso = sublead.pfRelIso03_all if hasattr(sublead, "pfRelIso03_all") else sublead.pfRelIso03_all_quadratic
     return ((lead_iso * lead.pt < 10) & (sublead_iso * sublead.pt < 10)
             & (abs(lead.eta) < 2.5) & (abs(sublead.eta) < 2.5))
+
+
+def wwgg_apply_jet_veto_map(processor, events, dataset_name, year):
+    """Apply the shared event-level map before constructing WWgg objects.
+
+    Payload/interface failures must propagate. skipJetVetoMap is the only
+    intentional bypass; generator normalization is computed by the caller
+    before this selection.
+    """
+    before = len(events)
+    enabled = not processor.skipJetVetoMap
+    if enabled and before:
+        events = jetvetomap(
+            processor, events=events, logger=logger,
+            dataset_name=dataset_name, year=year,
+        )
+    after = len(events)
+    counts = {
+        "cf_before_jetvetomap": before,
+        "cf_after_jetvetomap": after,
+        "cf_rejected_jetvetomap": before - after,
+    }
+    logger.info(
+        "WWGG_JETVETOMAP dataset=%s year=%s enabled=%s before=%d after=%d rejected=%d",
+        dataset_name, year, enabled, before, after, before - after,
+    )
+    return events, counts
 
 
 class WWggProcessor(HggSkeletonProcessor):
@@ -90,7 +154,10 @@ class WWggProcessor(HggSkeletonProcessor):
         output_format: str = "parquet",
         split_mc: bool = False,
         wwgg_selection: Optional[Dict[str, str]] = None,
+        wwgg_corrections: Optional[Dict[str, Any]] = None,
     ) -> None:
+        from higgs_dna.tools.wwgg_corrections import options
+        self.wwgg_corrections = options(wwgg_corrections)
         self.wwgg_selection = wwgg_selection_options(wwgg_selection)
         self.wwgg_source_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         self.wwgg_features_sha256 = hashlib.sha256(Path(__file__).with_name('wwgg_features.py').read_bytes()).hexdigest()
@@ -169,10 +236,8 @@ class WWggProcessor(HggSkeletonProcessor):
 
         # === Lumi mask (data only) ===
         if self.data_kind == "data":
-            try:
-                events = events[select_lumis(year, events, logger)]
-            except Exception:
-                logger.info(f"[WWgg] Lumi mask skip for {dataset_name}")
+            # Certification errors must never silently admit uncertified Data.
+            events = events[select_lumis(year, events, logger)]
 
         # Sum of gen weights before any event-level selection (needed for
         # normalization: weight_norm = xsec * lumi / sum_genw_presel)
@@ -186,6 +251,38 @@ class WWggProcessor(HggSkeletonProcessor):
             correction_names = self.corrections[dataset_name]
         except (KeyError, TypeError):
             correction_names = []
+
+        wwgg_validate_corrections(correction_names, available_object_corrections,
+                                  available_weight_corrections)
+
+        cfg = self.wwgg_corrections
+        from higgs_dna.tools import wwgg_corrections as integrated
+        enabled = cfg['jme'] or cfg['lepton_sf'] or cfg['tau_veto'] != 'off' or cfg['b_veto'] != 'off'
+        if enabled and (year != '2024' or self.nano_version != 15):
+            raise ValueError('Integrated WWgg corrections require 2024 NanoAODv15')
+        if self.systematics and self.systematics.get(dataset_name):
+            raise ValueError('WWgg does not execute the generic systematics loop; use explicit variation jobs')
+        if cfg['jme'] and any('jec' in n.lower() or 'jer' in n.lower() for n in correction_names):
+            raise ValueError('Do not combine WWgg V5/JRV2 with shared JME corrections')
+        if cfg['lepton_sf'] and any('electron' in n.lower() and 'veto' not in n.lower() or 'muon' in n.lower() for n in correction_names):
+            raise ValueError('Do not combine WWgg lepton component SFs with another lepton correction; review first')
+        if cfg['jer_forward_exemption'] and self.wwgg_selection['jet_pt_scheme'] != 'hhbbgg_2024':
+            raise ValueError('Forward JER exemption requires the matching eta-dependent jet cuts')
+        if self.data_kind == 'data' and cfg['variation'] != 'nominal':
+            raise ValueError('Variation jobs are for MC only')
+
+        # Match the shared Run-3 event-level map, not a selected-jet mask.
+        # Keep sum_genw_presel above this cut: rejected MC remains in the
+        # generated-input normalization denominator.
+        events, jet_veto_counts = wwgg_apply_jet_veto_map(
+            self, events, dataset_name, year
+        )
+        early_cutflow = {
+            "n_input": int(n_total_input), **jet_veto_counts,
+            "n_events": 0, "cf_fh": 0, "cf_sl": 0, "cf_fl": 0,
+        }
+        if not len(events):
+            return {"WWgg": early_cutflow}
 
         # === Filters & triggers ===
         events = self.apply_filters_and_triggers(events)
@@ -205,7 +302,7 @@ class WWggProcessor(HggSkeletonProcessor):
         s_or_s_applied = False
         s_or_s_ele_applied = False
         for correction in correction_names:
-            if "scale" or "smearing" in correction.lower():
+            if "scale" in correction.lower() or "smearing" in correction.lower():
                 if "Electron" in correction:
                     s_or_s_ele_applied = True
                 else:
@@ -232,15 +329,19 @@ class WWggProcessor(HggSkeletonProcessor):
                 warnings.warn(f"Could not process correction {correction_name}.")
                 continue
 
+        if cfg['jme']:
+            events = integrated.apply_jme(events, cfg, self.data_kind == 'data')
+
         # =================================================================
         # === Photon preselection ===
         # photons passing pT > 25, |η| < 2.5, mvaID > -0.9,
         # pixel seed veto, H/E < 0.08, electron veto
         # =================================================================
+        events = wwgg_apply_photon_flow(self, events, year)
         photons = events.Photon
         photons = photon_preselection(self, photons, events, year=year)
         if ak.sum(ak.num(photons) >= 2) == 0:
-            return {}
+            return {"WWgg": early_cutflow}
 
         # =================================================================
         # === Diphoton candidates (store_flag fiducial, same as HHbbgg) ===
@@ -442,15 +543,11 @@ class WWggProcessor(HggSkeletonProcessor):
         # pT > 20, |η| < 4.7, tightLepVeto, dR cleaning vs photon only
         # =================================================================
         jets = events.Jet
-        jets["jetId"] = add_jetId(jets, self.nano_version, year)  # v15 doesn't store jetId
-        jets_clean = select_jets(self, jets, diphotons, sel_mu, sel_ele)
+        jets["jetId"] = integrated.jet_id(jets) if cfg['jme'] else add_jetId(jets, self.nano_version, year)
+        jets_clean = wwgg_select_jets(self, jets, diphotons, sel_mu, sel_ele, year)
         sel_jets = jets[jets_clean]
 
-        try:
-            sel_jets = sel_jets[jetvetomap(self, sel_jets, year, logger)]
-            n_jets = ak.num(sel_jets)
-        except Exception:
-            n_jets = ak.num(sel_jets)
+        n_jets = ak.num(sel_jets)
 
         # =================================================================
         # === Z-veto: |m(e± + γ_lead) - 91.2| > 5 GeV ===
@@ -539,6 +636,23 @@ class WWggProcessor(HggSkeletonProcessor):
         # =================================================================
         Z_veto_applied = Z_veto if self.wwgg_selection["z_veto"] == "apply" else ak.ones_like(n_jets, dtype=bool)
         presel = pho_id & Z_veto_applied & (cat >= 0)
+        veto = integrated.veto_flags(events, ak.firsts(diphotons), sel_ele, sel_mu, sel_jets, cfg)
+        before_veto = ak.fill_none(presel & ~ak.is_none(ak.firsts(diphotons)), False)
+        veto_counts = {'cf_before_analysis_veto': int(ak.sum(before_veto)),
+                       'cf_tau_rejected_alone': int(ak.sum(before_veto & veto['tau_veto'])),
+                       'cf_b_rejected_alone': int(ak.sum(before_veto & veto['b_veto'])),
+                       'cf_both_veto_overlap': int(ak.sum(before_veto & veto['tau_veto'] & veto['b_veto']))}
+        if cfg['tau_veto'] == 'apply': presel = presel & ~veto['tau_veto']
+        b_efficiency_record = None
+        if cfg['b_efficiency'] and self.data_kind == 'mc':
+            from higgs_dna.tools.wwgg_b_efficiency import collect
+            # Evaluate on the same pre-b-veto candidates, after the configured
+            # tau veto. Never estimate efficiency from the surviving b-veto rows.
+            efficiency_mask = ak.fill_none(presel & ~ak.is_none(ak.firsts(diphotons)), False)
+            b_efficiency_record = collect(sel_jets[efficiency_mask],
+                events.genWeight[efficiency_mask], cat[efficiency_mask])
+        if cfg['b_veto'] == 'apply': presel = presel & ~veto['b_veto']
+        veto_counts['cf_after_analysis_veto'] = int(ak.sum(ak.fill_none(presel,False)))
 
         # drop events without a preselected diphoton candidate (same as HHbbgg L1550)
         sel_none = ~ak.is_none(ak.firsts(diphotons))
@@ -556,6 +670,10 @@ class WWggProcessor(HggSkeletonProcessor):
         if self.output_location is not None:
             akarr = diphoton_ak_array(self, first_diphoton)
 
+            for key, values in veto.items():
+                akarr[key] = values[mask]
+            akarr['tau_veto_applied'] = ak.ones_like(cat_mask,dtype=bool) & (cfg['tau_veto']=='apply')
+            akarr['b_veto_applied'] = ak.ones_like(cat_mask,dtype=bool) & (cfg['b_veto']=='apply')
             akarr["n_ele"] = n_ele[mask]
             akarr["n_mu"] = n_mu[mask]
             akarr["n_lep"] = n_lep[mask]
@@ -600,9 +718,20 @@ class WWggProcessor(HggSkeletonProcessor):
                             bTagEffFileName="WWgg",
                         )
 
+                if cfg['lepton_sf']:
+                    components = integrated.lepton_components(sel_ele[mask],sel_mu[mask])
+                    for name in ('mu_id','mu_iso','electron_id','electron_reco'):
+                        direction = cfg['variation'][len(name)+1:] if cfg['variation'].startswith(name+'_') else 'nominal'
+                        event_weights.add('wwgg_'+name, components[name+'_'+direction])
+                    for name, value in components.items(): akarr['sf_'+name] = value
+                # Persist each actual nominal factor for later attribution.
+                for name, value in event_weights._weights.items():
+                    akarr['sf_component_'+name] = value
                 weight_arr = ak.Array(event_weights.weight())
                 akarr["weight"] = weight_arr
-                akarr["weight_central"] = weight_arr / events.genWeight[mask]
+                central = numpy.ones(len(weight_arr))
+                for value in event_weights._weights.values(): central *= value
+                akarr["weight_central"] = central
             else:
                 akarr["weight"] = ak.ones_like(first_diphoton.pt)
                 akarr["weight_central"] = ak.ones_like(first_diphoton.pt)
@@ -683,6 +812,17 @@ class WWggProcessor(HggSkeletonProcessor):
                 "wwgg_source_file": source_file,
                 "wwgg_source_file_id": str(source_id),
                 "wwgg_corrections": json.dumps(correction_names),
+                "wwgg_integrated_config": json.dumps(cfg,sort_keys=True),
+                "wwgg_integrated_payloads": json.dumps(integrated.provenance(cfg),sort_keys=True),
+                "wwgg_analysis_veto_counts": json.dumps(veto_counts,sort_keys=True),
+                "wwgg_jer_met_propagation": "false",
+                "wwgg_pending_efficiency_SFs": "tau-veto,b-veto,extra-promptMVA/miniIso",
+                "wwgg_flow_precision": "float64" if self.doFlow_corrections else "disabled",
+                "wwgg_photon_flow_enabled": json.dumps(self.data_kind == 'mc' and self.doFlow_corrections),
+                "wwgg_jet_pt_scheme": self.wwgg_selection['jet_pt_scheme'],
+                "wwgg_jetvetomap_enabled": json.dumps(not self.skipJetVetoMap),
+                "wwgg_jetvetomap_interface": "event_level_v1",
+                "wwgg_jetvetomap_counts": json.dumps(jet_veto_counts, sort_keys=True),
             }
             if self.data_kind == "mc":
                 metadata["sum_genw_presel"] = str(sum_genw_presel)
@@ -701,16 +841,25 @@ class WWggProcessor(HggSkeletonProcessor):
                     metadata[prefix + "_rows"] = str(len(weights))
                     metadata[prefix + "_sumw"] = str(float(ak.sum(weights)))
                     metadata[prefix + "_sumw2"] = str(float(ak.sum(weights * weights)))
+            if b_efficiency_record is not None:
+                b_efficiency_record['dataset'] = dataset_name
+                b_efficiency_record['source_file'] = source_file
+                b_efficiency_record['partition_output'] = fname
+                b_efficiency_record['variation'] = cfg['variation']
+                b_efficiency_record['selection'] = self.wwgg_selection
+                b_efficiency_record['corrections'] = cfg
+                metadata['wwgg_b_efficiency'] = json.dumps(b_efficiency_record, allow_nan=False)
             subdirs = []
             if "dataset" in events.metadata:
                 subdirs.append(events.metadata["dataset"])
-            subdirs.append("nominal")
+            subdirs.append(cfg["variation"])
 
-            dump_ak_array(self, akarr, fname, self.output_location, metadata, subdirs)
+            dump_ak_array(self, ak.to_packed(akarr), fname, self.output_location, metadata, subdirs)
 
         return {
             "WWgg": {
                 "n_input": int(n_total_input),
+                **jet_veto_counts,
                 "cf_2photon": int(ak.sum(ak.num(photons) >= 2)),
                 "cf_diphoton": int(ak.sum(has_dipho)),
                 **ele_cf,
@@ -721,6 +870,7 @@ class WWggProcessor(HggSkeletonProcessor):
                 "cf_zveto": int(ak.sum(Z_veto & has_dipho)),
                 "cf_phoid": int(ak.sum(pho_id & has_dipho)),
                 "cf_fl_base": int(ak.sum(cat_fl_base)),
+                **veto_counts,
                 "n_events": int(ak.sum(mask)),
                 "cf_fh": int(ak.sum(cat_mask == 0)),
                 "cf_sl": int(ak.sum(cat_mask == 1)),

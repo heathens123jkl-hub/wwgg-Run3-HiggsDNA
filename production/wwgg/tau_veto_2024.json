@@ -1,0 +1,39 @@
+{
+  "schema": "wwgg_deeptau_trial_v1",
+  "mode": "apply",
+  "tau_pt_min": 20.0,
+  "tau_abs_eta_max": 2.5,
+  "tau_abs_dz_max": 0.2,
+  "tau_photon_dr_min": 0.2,
+  "pair_dr_min": 0.5,
+  "excluded_decay_modes": [
+    5,
+    6
+  ],
+  "require_opposite_sign": false,
+  "working_points": {
+    "etau": {
+      "VSjet": 4,
+      "VSe": 6,
+      "VSmu": 1
+    },
+    "mutau": {
+      "VSjet": 4,
+      "VSe": 2,
+      "VSmu": 4
+    },
+    "tautau": {
+      "VSjet": 4,
+      "VSe": 2,
+      "VSmu": 1
+    }
+  },
+  "notes": [
+    "Kinematics and WP combinations follow HGGggttupdate pages 11 and 14.",
+    "Use existing WWgg-selected electrons/muons; do not change any existing object or event selection.",
+    "Use stored Tau_pt; no PNet momentum correction or new tau scale factors.",
+    "Photon separation 0.2 and excluding decay modes 5,6 follow the existing HiggsDNA tau helper; provisional pending partner implementation.",
+    "Pair separation 0.5; no charge cut by default because the report does not specify one. Also save opposite-sign flags.",
+    "Veto is the union of etau/mutau/tautau candidates in each reconstructed channel; not proof of full analysis orthogonality."
+  ]
+}

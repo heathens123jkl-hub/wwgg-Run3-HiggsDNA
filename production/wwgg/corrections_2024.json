@@ -1,0 +1,12 @@
+{
+  "jme": true,
+  "jer": true,
+  "jer_policy": "cmssw_energy_floor",
+  "jer_forward_exemption": false,
+  "lepton_sf": true,
+  "tau_veto": "apply",
+  "b_veto": "apply",
+  "variation": "nominal",
+  "flow_precision": "float64",
+  "tau_config": "production/wwgg/tau_veto_2024.json"
+}

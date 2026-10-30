@@ -1,0 +1,57 @@
+{
+  "samplejson": "production/wwgg/validation_samples_2024.json",
+  "workflow": "WWgg",
+  "metaconditions": "Era2023_postBPix_v1",
+  "taggers": [],
+  "split_mc": false,
+  "year": {
+    "WWgg_FH_2024": [
+      "2024"
+    ],
+    "WWgg_SL_2024": [
+      "2024"
+    ],
+    "WWgg_FL_2024": [
+      "2024"
+    ]
+  },
+  "corrections": {
+    "WWgg_FH_2024": [
+      "Smearing2G_IJazZ",
+      "TriggerSF",
+      "Pileup",
+      "LoosePhoIDSF",
+      "ElectronVetoSF",
+      "PreselSF"
+    ],
+    "WWgg_SL_2024": [
+      "Smearing2G_IJazZ",
+      "TriggerSF",
+      "Pileup",
+      "LoosePhoIDSF",
+      "ElectronVetoSF",
+      "PreselSF"
+    ],
+    "WWgg_FL_2024": [
+      "Smearing2G_IJazZ",
+      "TriggerSF",
+      "Pileup",
+      "LoosePhoIDSF",
+      "ElectronVetoSF",
+      "PreselSF"
+    ]
+  },
+  "systematics": {},
+  "wwgg_corrections": {
+    "jme": true,
+    "jer": true,
+    "jer_policy": "cmssw_energy_floor",
+    "jer_forward_exemption": false,
+    "lepton_sf": true,
+    "tau_veto": "apply",
+    "b_veto": "apply",
+    "variation": "nominal",
+    "flow_precision": "float64",
+    "tau_config": "production/wwgg/tau_veto_2024.json"
+  }
+}
