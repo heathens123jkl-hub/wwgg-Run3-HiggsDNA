@@ -187,6 +187,7 @@ higgs_dna/tools/*HHbbgg.json
 
 # Flow models
 higgs_dna/tools/flows/
+production_jobs_20261031/
 
 # Machine Learning models
 higgs_dna/tools/*.onnx
