@@ -1,0 +1,34 @@
+WWgg nominal production update, 2026-11-06
+
+Changes:
+- classical_noIso diphoton selection; existing photon preselection unchanged.
+- Data Scale and MC Smearing from the upstream Zee+Zmmg implementation
+  (upstream HiggsDNA commit 3d9afad9017880c3034d7144adafdc78521550f5).
+- All MC commands explicitly use --no-trigger --doFlow-corrections.
+  Trigger efficiency weights remain enabled for MC; Data retains trigger selection.
+- Retain existing JME, lepton and photon efficiency corrections.
+- Retain tau/b veto selections; no tau/b veto efficiency SF or new tau TES enabled.
+- Keep pre-b-veto MC efficiency accumulation for later evaluation.
+- Carry forward the validated b-score validation-scope fix.
+
+Validation:
+18 bounded real-event modes complete; Data blinded, artifact hashes checked.
+Two selected-event losses traced to photon ID and subleading pT/mass boundaries.
+34 local tests passed across seven relevant test files.
+These are technical checks, not a full-production efficiency measurement.
+
+Production:
+prepare_all_20261106.py prepare --previous-production OLD_EOS_OUTPUT
+  --assets-from VALIDATED_REVIEW_REPO --output NEW_EOS_OUTPUT
+prepare_all_20261106.py submit --output NEW_EOS_OUTPUT
+
+The exact previous job_inputs.json inventory is reused, not rediscovered via DAS.
+All decay-mode signal samples, single-Higgs, continuum and Data files are retained.
+New AFS checkout and EOS output required. No completed old output is reused.
+Chunk size: 10000; requested memory: 12000 MB; materialization limit: 100.
+Proxy must be a persistent AFS file, valid for at least 24 hours at submission.
+Workers reject leftover partial partitions rather than risk duplicate outputs.
+Scale/Smearing payload and Golden JSON must match validated checksums.
+Submission is guarded against accidental duplicate attempts.
+
+Corrections review: production/wwgg/correction_review_20261106.json

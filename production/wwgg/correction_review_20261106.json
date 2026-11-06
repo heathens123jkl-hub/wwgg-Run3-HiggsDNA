@@ -1,0 +1,104 @@
+{
+  "scope": "Photon numerical tests, tau payload coverage and bounded combined noIso + ZeeZmmg + Flow real-event validation; not full-production physics closure.",
+  "upstream_commit": "3d9afad9017880c3034d7144adafdc78521550f5",
+  "photon_payload_sha256": "5dce7711ba27d07172d353f7ddcb17ad09619d13d1cf02335f02c38e78340c5c",
+  "photon_numerical_status": "PASS",
+  "tau_payload_sha256": "2f36d1ff0df7bce33e3bddd5f01177961393bbb1f6a43b5f22e9c7d5a5caadf3",
+  "tau_coverage": {
+    "DeepTau2018v2p5VSjet": {
+      "errors": 36,
+      "affected_dm": [
+        2
+      ],
+      "affected_genmatch": [
+        5
+      ],
+      "errors_in_dm_0_1_10_11": 0
+    },
+    "DeepTau2018v2p5VSe": {
+      "errors": 120,
+      "affected_dm": [
+        2
+      ],
+      "affected_genmatch": [
+        1,
+        3
+      ],
+      "errors_in_dm_0_1_10_11": 0
+    },
+    "DeepTau2018v2p5VSmu": {
+      "errors": 0,
+      "affected_dm": [],
+      "affected_genmatch": [],
+      "errors_in_dm_0_1_10_11": 0
+    },
+    "tau_energy_scale": {
+      "errors": 180,
+      "affected_dm": [
+        2
+      ],
+      "affected_genmatch": [
+        1,
+        3,
+        5
+      ],
+      "errors_in_dm_0_1_10_11": 0
+    }
+  },
+  "tau_veto_sf_enabled": false,
+  "b_veto_sf_enabled": false,
+  "pending": [
+    "b-tag efficiencies under the new selection: tiny validation cohorts have zero b-flavour jets and cannot define a usable map. Accumulate from full MC production before b veto.",
+    "Tau veto correction prescription: joint pair logic, MC efficiencies and fake-rate coverage; unsupported DM2 cases still unresolved."
+  ],
+  "production_modified_remotely": false,
+  "real_event_validation": {
+    "status": "COMPLETE",
+    "cases": 18,
+    "input_mc_events_per_sample": 200,
+    "data_scope": "Three previously selected sideband cohorts; technical validation only",
+    "artifact_hashes": "PASS",
+    "data_event_sets_between_modes": "IDENTICAL",
+    "data_weights": "UNITY",
+    "data_blinding": "PASS",
+    "source_archive": "wwgg_update_trial_20261106_xiongw.tar.gz"
+  },
+  "tau_real_event_dm2": {
+    "kin_candidates": 1,
+    "sample": "WWgg_SL_2024",
+    "genPartFlav": 0,
+    "VSjet": 0,
+    "VSe": 0,
+    "VSmu": 0,
+    "accepted_pair_events": 0,
+    "scope": "noiso_zeezmmg 200-event cohorts only"
+  },
+  "photon_selection_losses": {
+    "status": "TRACED",
+    "WWgg_SL_2024": {
+      "event": [
+        1,
+        2025,
+        742944
+      ],
+      "reason": "Photon MVA ID fails preselection; only one photon remains",
+      "old_mvaID": -0.894578218460083,
+      "new_mvaID": -0.9128791093826294,
+      "threshold": -0.9
+    },
+    "WWgg_FL_2024": {
+      "event": [
+        1,
+        1206,
+        437581
+      ],
+      "reason": "Both new diphoton candidates fail subleading pT/mass > 0.25",
+      "old_selected_ratio": 0.2523963562394656,
+      "new_ratios": [
+        0.24913075591930914,
+        0.2345063293490503
+      ]
+    },
+    "scope": "Original 200-entry cohorts; not an efficiency measurement"
+  }
+}

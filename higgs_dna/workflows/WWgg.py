@@ -53,6 +53,11 @@ def wwgg_validate_corrections(names, object_registry, weight_registry):
         raise ValueError('WWgg corrections must be a list of names')
     if len(set(names)) != len(names):
         raise ValueError('Duplicate WWgg correction: would apply a factor twice')
+    photon_calibrations = {'Scale', 'Smearing', 'Scale_Trad', 'Smearing_Trad',
+                           'Scale_IJazZ', 'Smearing_IJazZ',
+                           'Scale2G_IJazZ', 'Smearing2G_IJazZ'}
+    if len(set(names) & photon_calibrations) > 1:
+        raise ValueError('Choose exactly one nominal photon scale/smearing calibration')
     unknown = set(names) - set(object_registry) - set(weight_registry)
     if unknown:
         raise ValueError('Unknown WWgg corrections: ' + ', '.join(sorted(unknown)))
@@ -81,17 +86,24 @@ def wwgg_select_jets(processor, jets, diphotons, muons, electrons, year):
     return select_jets(processor, jets, diphotons, muons, electrons)
 
 
-def wwgg_fiducial_mask(diphotons, mode):
-    """Relax only the two photon pT/mass cuts; preserve isolation and eta."""
-    if mode == "apply":
-        return diphotons.pass_fiducial_classical
-    if mode != "store_only":
-        raise ValueError("Invalid diphoton selection mode")
-    lead, sublead = diphotons.pho_lead, diphotons.pho_sublead
-    lead_iso = lead.pfRelIso03_all if hasattr(lead, "pfRelIso03_all") else lead.pfRelIso03_all_quadratic
-    sublead_iso = sublead.pfRelIso03_all if hasattr(sublead, "pfRelIso03_all") else sublead.pfRelIso03_all_quadratic
-    return ((lead_iso * lead.pt < 10) & (sublead_iso * sublead.pt < 10)
-            & (abs(lead.eta) < 2.5) & (abs(sublead.eta) < 2.5))
+def wwgg_select_diphotons(processor, diphotons):
+    """Classical pT/mass cuts without the extra diphoton isolation cut.
+
+    Photon preselection is unchanged. Keep explicit noIso baseline flags
+    even in the optional ratio-cut store_only mode.
+    """
+    if processor.fiducialCuts != 'classical_noIso':
+        raise ValueError('WWgg requires classical_noIso fiducial cuts')
+    mass_mask = (diphotons.mass > 100) & (diphotons.mass < 180)
+    diphotons['pass_fiducial_classical_noIso'] = (
+        mass_mask & (diphotons.pho_lead.pt / diphotons.mass > 1 / 3)
+        & (diphotons.pho_sublead.pt / diphotons.mass > 1 / 4))
+    mode = processor.wwgg_selection['diphoton_pt_over_mass']
+    if mode == 'apply':
+        diphotons = apply_fiducial_cut_det_level(processor, diphotons)
+    elif mode != 'store_only':
+        raise ValueError('Invalid diphoton selection mode')
+    return diphotons[(diphotons.mass > 100) & (diphotons.mass < 180)]
 
 
 def wwgg_apply_jet_veto_map(processor, events, dataset_name, year):
@@ -186,7 +198,7 @@ class WWggProcessor(HggSkeletonProcessor):
         # === WW-specific overrides (after skeleton defaults are set) ===
 
         # Fiducial cuts — store_flag, same as HHbbgg
-        self.fiducialCuts = "store_flag"
+        self.fiducialCuts = "classical_noIso"
 
         # Photon preselection (aligned with bbgg preselection standards)
         self.min_pt_photon = 25.0
@@ -254,6 +266,13 @@ class WWggProcessor(HggSkeletonProcessor):
 
         wwgg_validate_corrections(correction_names, available_object_corrections,
                                   available_weight_corrections)
+        if 'Scale' in correction_names and self.data_kind != 'data':
+            raise ValueError('Hgg Scale is a Data correction')
+        if 'Smearing' in correction_names:
+            if self.data_kind != 'mc':
+                raise ValueError('Hgg Smearing is an MC correction')
+            if self.apply_trigger or not self.doFlow_corrections:
+                raise ValueError('Updated WWgg MC requires --no-trigger --doFlow-corrections')
 
         cfg = self.wwgg_corrections
         from higgs_dna.tools import wwgg_corrections as integrated
@@ -344,20 +363,18 @@ class WWggProcessor(HggSkeletonProcessor):
             return {"WWgg": early_cutflow}
 
         # =================================================================
-        # === Diphoton candidates (store_flag fiducial, same as HHbbgg) ===
+        # === Diphoton candidates (classical_noIso fiducial) ===
         # =================================================================
         diphotons = build_diphoton_candidates(photons, self.min_pt_lead_photon)
-        diphotons = apply_fiducial_cut_det_level(self, diphotons)
-        diphotons = diphotons[wwgg_fiducial_mask(diphotons, self.wwgg_selection["diphoton_pt_over_mass"])]
-        diphotons = diphotons[(diphotons.mass > 100) & (diphotons.mass < 180)]  # Higgs mass window
+        diphotons = wwgg_select_diphotons(self, diphotons)
 
         # Rank is within the relaxed candidate list, ordered by diphoton pT.
         # Cleaning uses the entire list; even an unchanged first candidate does
         # not guarantee identical lepton/jet definitions to baseline production.
         candidate_count = ak.num(diphotons)
-        baseline_candidate_count = ak.sum(diphotons.pass_fiducial_classical, axis=1)
+        baseline_candidate_count = ak.sum(diphotons.pass_fiducial_classical_noIso, axis=1)
         baseline_candidate_rank = ak.fill_none(ak.firsts(
-            ak.local_index(diphotons, axis=1)[diphotons.pass_fiducial_classical]), -1)
+            ak.local_index(diphotons, axis=1)[diphotons.pass_fiducial_classical_noIso]), -1)
 
         has_dipho = ak.num(diphotons) > 0  # baseline for all post-diphoton cutflow
 
@@ -636,8 +653,9 @@ class WWggProcessor(HggSkeletonProcessor):
         # =================================================================
         Z_veto_applied = Z_veto if self.wwgg_selection["z_veto"] == "apply" else ak.ones_like(n_jets, dtype=bool)
         presel = pho_id & Z_veto_applied & (cat >= 0)
-        veto = integrated.veto_flags(events, ak.firsts(diphotons), sel_ele, sel_mu, sel_jets, cfg)
         before_veto = ak.fill_none(presel & ~ak.is_none(ak.firsts(diphotons)), False)
+        veto = integrated.veto_flags(events, ak.firsts(diphotons), sel_ele, sel_mu, sel_jets, cfg,
+                                     b_validation_mask=before_veto)
         veto_counts = {'cf_before_analysis_veto': int(ak.sum(before_veto)),
                        'cf_tau_rejected_alone': int(ak.sum(before_veto & veto['tau_veto'])),
                        'cf_b_rejected_alone': int(ak.sum(before_veto & veto['b_veto'])),
@@ -804,7 +822,8 @@ class WWggProcessor(HggSkeletonProcessor):
             metadata = {
                 "wwgg_selection": json.dumps(self.wwgg_selection, sort_keys=True),
                 "wwgg_source_sha256": self.wwgg_source_sha256,
-                "wwgg_selection_schema": "1",
+                "wwgg_selection_schema": "2",
+                "wwgg_diphoton_fiducial": self.fiducialCuts,
                 "wwgg_feature_schema": WWGG_FEATURE_SCHEMA,
                 "wwgg_features_sha256": self.wwgg_features_sha256,
                 "wwgg_dataset": dataset_name,
@@ -813,7 +832,7 @@ class WWggProcessor(HggSkeletonProcessor):
                 "wwgg_source_file_id": str(source_id),
                 "wwgg_corrections": json.dumps(correction_names),
                 "wwgg_integrated_config": json.dumps(cfg,sort_keys=True),
-                "wwgg_integrated_payloads": json.dumps(integrated.provenance(cfg),sort_keys=True),
+                "wwgg_integrated_payloads": json.dumps(integrated.provenance(cfg, correction_names, year),sort_keys=True),
                 "wwgg_analysis_veto_counts": json.dumps(veto_counts,sort_keys=True),
                 "wwgg_jer_met_propagation": "false",
                 "wwgg_pending_efficiency_SFs": "tau-veto,b-veto,extra-promptMVA/miniIso",
@@ -847,6 +866,7 @@ class WWggProcessor(HggSkeletonProcessor):
                 b_efficiency_record['partition_output'] = fname
                 b_efficiency_record['variation'] = cfg['variation']
                 b_efficiency_record['selection'] = self.wwgg_selection
+                b_efficiency_record['diphoton_fiducial'] = self.fiducialCuts
                 b_efficiency_record['corrections'] = cfg
                 metadata['wwgg_b_efficiency'] = json.dumps(b_efficiency_record, allow_nan=False)
             subdirs = []

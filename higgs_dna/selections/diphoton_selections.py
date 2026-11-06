@@ -47,8 +47,9 @@ def apply_fiducial_cut_det_level(
     self,
     diphotons: ak.Array,
 ) -> ak.Array:
-    lead_rel_iso = diphotons.pho_lead.pfRelIso03_all if hasattr(diphotons.pho_lead, "pfRelIso03_all") else diphotons.pho_lead.pfRelIso03_all_quadratic  # photons.pfRelIso03_chg for v11, photons.pfRelIso03_chg_quadratic v12 and above
-    sublead_rel_iso = diphotons.pho_sublead.pfRelIso03_all if hasattr(diphotons.pho_sublead, "pfRelIso03_all") else diphotons.pho_sublead.pfRelIso03_all_quadratic  # photons.pfRelIso03_chg for v11, photons.pfRelIso03_chg_quadratic v12 and above
+    if self.fiducialCuts in ('classical', 'geometric', 'store_flag'):
+        lead_rel_iso = diphotons.pho_lead.pfRelIso03_all if hasattr(diphotons.pho_lead, "pfRelIso03_all") else diphotons.pho_lead.pfRelIso03_all_quadratic  # photons.pfRelIso03_chg for v11, photons.pfRelIso03_chg_quadratic v12 and above
+        sublead_rel_iso = diphotons.pho_sublead.pfRelIso03_all if hasattr(diphotons.pho_sublead, "pfRelIso03_all") else diphotons.pho_sublead.pfRelIso03_all_quadratic  # photons.pfRelIso03_chg for v11, photons.pfRelIso03_chg_quadratic v12 and above
     # Determine if event passes fiducial Hgg cuts at detector-level
     if self.fiducialCuts == 'classical':
         fid_det_passed = (diphotons.pho_lead.pt / diphotons.mass > 1 / 3) & (diphotons.pho_sublead.pt / diphotons.mass > 1 / 4) & (lead_rel_iso * diphotons.pho_lead.pt < 10) & ((sublead_rel_iso * diphotons.pho_sublead.pt) < 10) & (numpy.abs(diphotons.pho_lead.eta) < 2.5) & (numpy.abs(diphotons.pho_sublead.eta) < 2.5)

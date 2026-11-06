@@ -56,7 +56,7 @@ def payload(name):
     return correctionlib.CorrectionSet.from_file(str(PAYLOADS / name))
 
 
-def provenance(cfg):
+def provenance(cfg, correction_names=(), year='2024'):
     names = []
     if cfg['jme']: names += ['jet_jerc.json.gz', 'jetid.json.gz']
     if cfg['lepton_sf']: names += ['electron.json.gz', 'muon_Z.json.gz']
@@ -66,6 +66,10 @@ def provenance(cfg):
     if cfg['b_veto'] != 'off':
         from .wwgg_b_veto import load_b_config
         result['btag_wp_payload'] = load_b_config(ROOT)['payload_sha256']
+    if set(correction_names) & {'Scale', 'Smearing'}:
+        sands = ROOT / ('higgs_dna/systematics/JSONs/scaleAndSmearing/Hgg/'
+                        f'EGMScalesSmearing_ZeeZmmg_{year}.v1.json')
+        result['photon_ZeeZmmg'] = hashlib.sha256(sands.read_bytes()).hexdigest()
     return result
 
 
@@ -189,7 +193,7 @@ def lepton_components(electrons,muons):
     return result
 
 
-def veto_flags(events,diphoton,electrons,muons,jets,cfg):
+def veto_flags(events,diphoton,electrons,muons,jets,cfg,b_validation_mask=None):
     flags = {}
     if cfg['tau_veto'] != 'off':
         from .wwgg_tau_veto import evaluate
@@ -203,7 +207,12 @@ def veto_flags(events,diphoton,electrons,muons,jets,cfg):
     if cfg['b_veto'] != 'off':
         from .wwgg_b_veto import evaluate_b,load_b_config
         data = evaluate_b(jets,load_b_config(ROOT))
-        if bool(ak.any(data['b_trial_n_invalid_kin']>0)):
+        relevant = ak.ones_like(events.event,dtype=bool) if b_validation_mask is None else ak.fill_none(b_validation_mask,False)
+        if relevant.ndim != 1 or len(relevant) != len(events):
+            raise ValueError('Unaligned b-veto validation mask')
+        # Rejected baseline events cannot affect selection or efficiency output.
+        # Preserve invalid counts, and still fail on any relevant invalid score.
+        if bool(ak.any((data['b_trial_n_invalid_kin']>0)&relevant)):
             raise ValueError('Invalid UParT score in b-veto phase space')
         for k,v in data.items():
             if v.ndim==1: flags[k.replace('b_trial_','b_')] = v

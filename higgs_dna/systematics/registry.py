@@ -1,3 +1,4 @@
+from .photon_sands_zeezmmg import Scale_ZeeZmmg, Smearing_ZeeZmmg
 from .photon_systematics import (
     photon_pt_scale_dummy,
     Scale_Trad,
@@ -309,6 +310,8 @@ object_systematics = {
 # functions correcting nominal object quantities to be placed here
 # dict containing "name": varying_function
 object_corrections = {
+    "Scale": partial(Scale_ZeeZmmg, pt=None, is_correction=True, gaussians="2G", is_Zee=False),
+    "Smearing": partial(Smearing_ZeeZmmg, pt=None, is_correction=True, gaussians="2G"),
     "Scale_Trad": partial(Scale_Trad, pt=None, is_correction=True),
     "Smearing_Trad": partial(Smearing_Trad, pt=None, is_correction=True),
     "Electron_Scale_Trad": partial(Electron_Scale_Trad, pt=None, is_correction=True),
