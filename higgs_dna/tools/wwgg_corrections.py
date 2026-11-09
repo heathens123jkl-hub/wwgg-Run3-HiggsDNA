@@ -126,6 +126,17 @@ def apply_jme(events, cfg, is_data):
     return events
 
 
+def jer_sf_variation(res,sf,unc,variation):
+    res,sf,unc = [np.asarray(x,dtype=float) for x in (res,sf,unc)]
+    if not np.isfinite([res,sf,unc]).all() or np.any((res<0)|(sf<=0)|(unc<0)):
+        raise ValueError('Invalid JER payload values')
+    # Relative uncertainty is not bounded by 100%; nominal uses nominal SF.
+    varied = sf*(1+unc) if variation=='JER_up' else sf*(1-unc) if variation=='JER_down' else sf.copy()
+    if not np.isfinite(varied).all() or np.any(varied<0):
+        raise ValueError('Nonphysical varied JER SF; down-boundary prescription is unresolved')
+    return varied
+
+
 def jer_factors(events, pts, masses, cset, cfg):
     import correctionlib
     from .wwgg_jec_type1 import flat, evaluate
@@ -139,8 +150,7 @@ def jer_factors(events, pts, masses, cset, cfg):
     v = dict(JetPt=pt,JetEta=eta,Rho=rho)
     tag = 'Summer24Prompt24_JRV2_MC_'
     res,sf,unc = [evaluate(cset[tag+n+'_AK4PFPuppi'],v) for n in ('PtResolution','ScaleFactor','SFUncertainty')]
-    if not np.isfinite([res,sf,unc]).all() or np.any((res<0)|(sf<=0)|(unc<0)|(unc>=1)):
-        raise ValueError('JER payload outside validated range')
+    sf = jer_sf_variation(res,sf,unc,cfg['variation'])
     genpt, matched = np.empty(len(pt)), np.empty(len(pt),dtype=bool)
     offset = 0
     for n, gen in zip(counts,ak.to_list(events.GenJet)):
@@ -154,9 +164,6 @@ def jer_factors(events, pts, masses, cset, cfg):
         'inputs':['JetPt','JetEta','Rho','EventID'],'distribution':'normal'}}]}))['normal']
     z = rng.evaluate(pt,eta,rho,np.repeat(ak.to_numpy(events.event),counts).astype(np.int64))
     # Same central momenta, matching and random draw in all variation jobs.
-    variation = cfg['variation']
-    if variation == 'JER_up': sf = sf*(1+unc)
-    if variation == 'JER_down': sf = sf*(1-unc)
     f = factors(pt,genpt,matched,res,sf,z)
     if cfg['jer_forward_exemption']: f = np.where(~matched&(abs(eta)>2.5)&(abs(eta)<3),1.,f)
     if not np.isfinite(f).all(): raise ValueError('Nonfinite JER factor')
@@ -166,7 +173,20 @@ def jer_factors(events, pts, masses, cset, cfg):
     return ak.unflatten(f,counts)
 
 
-def lepton_components(electrons,muons):
+# Analysis boundary convention, not a POG-prescribed extrapolation.
+ELECTRON_SF_ETA_MARGIN = 0.001
+
+
+def electron_sf_eta(eta):
+    raw = np.asarray(eta,dtype=float)
+    if not np.isfinite(raw).all() or np.any(abs(raw)>2.5+ELECTRON_SF_ETA_MARGIN):
+        raise ValueError('Selected electron outside SF boundary tolerance')
+    clipped = abs(raw)>=2.5
+    edge = np.nextafter(2.5,0.)
+    return np.clip(raw,-edge,edge),clipped
+
+
+def lepton_components(electrons,muons,diagnostics=None):
     """Component SFs only: not a correction for the extra prompt-MVA cuts."""
     result = {}
     for component in ('mu_id','mu_iso','electron_id','electron_reco'):
@@ -175,8 +195,14 @@ def lepton_components(electrons,muons):
         counts = ak.num(obj.pt)
         pt = np.asarray(ak.to_numpy(ak.flatten(obj.pt)),dtype=float)
         eta = np.asarray(ak.to_numpy(ak.flatten(obj.eta if is_mu else obj.eta+obj.deltaEtaSC)),dtype=float)
-        if not np.isfinite([pt,eta]).all() or np.any((pt<10)|(abs(eta)>=(2.4 if is_mu else 2.5))):
+        if not np.isfinite([pt,eta]).all() or np.any(pt<10):
             raise ValueError('Selected lepton outside SF domain')
+        if is_mu:
+            if np.any(abs(eta)>=2.4): raise ValueError('Selected lepton outside SF domain')
+        else:
+            eta,clipped = electron_sf_eta(eta)
+            if diagnostics is not None and component=='electron_id':
+                diagnostics['electron_sf_eta_boundary_count'] = ak.to_numpy(ak.sum(ak.unflatten(clipped,counts),axis=1))
         for variation in ('nominal','up','down'):
             values = np.ones(len(pt))
             if is_mu and len(pt):
@@ -195,21 +221,23 @@ def lepton_components(electrons,muons):
 
 def veto_flags(events,diphoton,electrons,muons,jets,cfg,b_validation_mask=None):
     flags = {}
+    # The legacy argument name is retained for existing production callers.
+    # Both veto validations use the same pre-veto baseline event scope.
+    relevant = ak.ones_like(events.event,dtype=bool) if b_validation_mask is None else ak.fill_none(b_validation_mask,False)
+    if relevant.ndim != 1 or len(relevant) != len(events):
+        raise ValueError('Unaligned veto validation mask')
     if cfg['tau_veto'] != 'off':
         from .wwgg_tau_veto import evaluate
         tc = json.loads((ROOT / cfg['tau_config']).read_text())
         tc['mode'] = cfg['tau_veto']
         data = evaluate(events.Tau,diphoton,electrons,muons,tc)
-        if bool(ak.any(data['tau_trial_n_invalid']>0)):
+        if bool(ak.any((data['tau_trial_n_invalid']>0)&relevant)):
             raise ValueError('Invalid Tau input/DeepTau encoding; do not silently accept veto')
         for k,v in data.items():
             if v.ndim==1: flags[k.replace('tau_trial_','tau_')] = v
     if cfg['b_veto'] != 'off':
         from .wwgg_b_veto import evaluate_b,load_b_config
         data = evaluate_b(jets,load_b_config(ROOT))
-        relevant = ak.ones_like(events.event,dtype=bool) if b_validation_mask is None else ak.fill_none(b_validation_mask,False)
-        if relevant.ndim != 1 or len(relevant) != len(events):
-            raise ValueError('Unaligned b-veto validation mask')
         # Rejected baseline events cannot affect selection or efficiency output.
         # Preserve invalid counts, and still fail on any relevant invalid score.
         if bool(ak.any((data['b_trial_n_invalid_kin']>0)&relevant)):

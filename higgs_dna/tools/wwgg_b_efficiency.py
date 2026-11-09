@@ -17,7 +17,7 @@ def collect(jets, genweight, category):
     selected=jets[eligible]
     flat=lambda x:np.asarray(ak.to_numpy(ak.flatten(x)))
     pt,eta,score,flavour=[flat(selected[f]) for f in ('pt','eta','btagUParTAK4B','hadronFlavour')]
-    if not np.all(np.isfinite(score)&(score>=0)&(score<=1)&np.isin(flavour,[0,4,5])):
+    if not np.all(np.isfinite(score)&(((score>=0)&(score<=1))|(score == -1))&np.isin(flavour,[0,4,5])):
         raise ValueError('Invalid accepted score/flavour')
     weights=flat(ak.broadcast_arrays(selected.pt,genweight)[1])
     cats=flat(ak.broadcast_arrays(selected.pt,category)[1])
@@ -25,6 +25,8 @@ def collect(jets, genweight, category):
     result={'schema':'wwgg_b_efficiency_v1','threshold':.4648,
             'pt_edges':[str(x) if np.isinf(x) else x for x in PT_EDGES],
             'abs_eta_edges':ETA_EDGES,'weight_convention':'genWeight only; before b veto, after configured tau veto',
+            'score_policy':'exact_minus_one_untagged',
+            'sentinel_jets':int(np.sum(score == -1)),
             'events_before_b_veto':len(jets),'channels':{}}
     for cat in (0,1,2):
         by_flavour={};result['channels'][str(cat)]=by_flavour

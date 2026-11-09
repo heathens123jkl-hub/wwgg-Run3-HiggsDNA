@@ -737,7 +737,9 @@ class WWggProcessor(HggSkeletonProcessor):
                         )
 
                 if cfg['lepton_sf']:
-                    components = integrated.lepton_components(sel_ele[mask],sel_mu[mask])
+                    sf_diagnostics = {}
+                    components = integrated.lepton_components(sel_ele[mask],sel_mu[mask],diagnostics=sf_diagnostics)
+                    for name, value in sf_diagnostics.items(): akarr[name] = value
                     for name in ('mu_id','mu_iso','electron_id','electron_reco'):
                         direction = cfg['variation'][len(name)+1:] if cfg['variation'].startswith(name+'_') else 'nominal'
                         event_weights.add('wwgg_'+name, components[name+'_'+direction])

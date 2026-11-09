@@ -36,10 +36,13 @@ def evaluate_b(jets,cfg):
     score=jets[branch]
     kin=ak.fill_none(np.isfinite(jets.pt)&np.isfinite(jets.eta)&
                      (jets.pt>cfg['pt_min'])&(abs(jets.eta)<cfg['abs_eta_max']),False)
-    valid=ak.fill_none(np.isfinite(score)&(score>=0)&(score<=1),False)
+    # Analysis convention: exactly -1 is untagged, not a verified original zero.
+    sentinel=ak.fill_none(score == -1,False)
+    valid=ak.fill_none(np.isfinite(score)&(((score>=0)&(score<=1))|sentinel),False)
     tagged=ak.fill_none(kin&valid&(score>=threshold),False)
     out={'b_trial_n_kin':ak.sum(kin,axis=1),
          'b_trial_n_tagged':ak.sum(tagged,axis=1),
+         'b_trial_n_sentinel_kin':ak.sum(kin&sentinel,axis=1),
          'b_trial_n_invalid_kin':ak.sum(kin&~valid,axis=1),
          'b_trial_veto':ak.any(tagged,axis=1),
          'b_trial_jet_pt':jets.pt,'b_trial_jet_eta':jets.eta,

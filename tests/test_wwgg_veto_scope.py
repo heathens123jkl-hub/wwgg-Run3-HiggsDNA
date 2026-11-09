@@ -7,7 +7,7 @@ from higgs_dna.tools import wwgg_corrections as c
 class Tests(unittest.TestCase):
     def run_flags(self, mask):
         events=ak.Array([{'event':1},{'event':2}])
-        jets=ak.Array([[{'pt':487.,'eta':1.6,'btagUParTAK4B':-1.}],
+        jets=ak.Array([[{'pt':487.,'eta':1.6,'btagUParTAK4B':-2.}],
                        [{'pt':50.,'eta':.2,'btagUParTAK4B':.8}]])
         cfg=dict(branch='btagUParTAK4B',threshold=.4648,pt_min=30.,abs_eta_max=2.5)
         with patch('higgs_dna.tools.wwgg_b_veto.load_b_config',return_value=cfg):
@@ -29,6 +29,31 @@ class Tests(unittest.TestCase):
     def test_misaligned_mask(self):
         with self.assertRaisesRegex(ValueError,'Unaligned'):
             self.run_flags(ak.Array([False]))
+
+    def tau_flags(self, mask):
+        events=ak.Array([{'event':1,'Tau':[]},{'event':2,'Tau':[]}])
+        data={'tau_trial_n_invalid':ak.Array([1,0]),
+              'tau_trial_veto':ak.Array([False,True])}
+        with patch('higgs_dna.tools.wwgg_tau_veto.evaluate',return_value=data):
+            return c.veto_flags(events,None,None,None,None,
+                                c.options({'tau_veto':'apply'}),mask)
+
+    def test_tau_rejected_event_keeps_diagnostics(self):
+        out=self.tau_flags(ak.Array([False,True]))
+        self.assertEqual(ak.to_list(out['tau_n_invalid']),[1,0])
+        self.assertEqual(ak.to_list(out['tau_veto']),[False,True])
+
+    def test_tau_selected_invalid_still_fails(self):
+        with self.assertRaisesRegex(ValueError,'Invalid Tau'):
+            self.tau_flags(ak.Array([True,True]))
+
+    def test_tau_default_stays_strict(self):
+        with self.assertRaisesRegex(ValueError,'Invalid Tau'):
+            self.tau_flags(None)
+
+    def test_tau_misaligned_mask(self):
+        with self.assertRaisesRegex(ValueError,'Unaligned'):
+            self.tau_flags(ak.Array([False]))
 
 
 if __name__=='__main__':
